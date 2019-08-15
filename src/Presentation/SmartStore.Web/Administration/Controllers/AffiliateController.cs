@@ -21,6 +21,7 @@ using SmartStore.Web.Framework.Controllers;
 using SmartStore.Web.Framework.Filters;
 using SmartStore.Web.Framework.Security;
 using Telerik.Web.Mvc;
+using SmartStore.Services.Common;
 
 namespace SmartStore.Admin.Controllers
 {
@@ -42,19 +43,19 @@ namespace SmartStore.Admin.Controllers
         private readonly IPermissionService _permissionService;
 		private readonly AdminAreaSettings _adminAreaSettings;
 		private readonly CustomerSettings _customerSettings;
+		private readonly IAddressService _addressService;
 
-        #endregion
+		#endregion
 
-        #region Constructors
+		#region Constructors
 
-        public AffiliateController(ILocalizationService localizationService,
+		public AffiliateController(ILocalizationService localizationService,
             IWorkContext workContext, IDateTimeHelper dateTimeHelper, IWebHelper webHelper,
             ICountryService countryService, IStateProvinceService stateProvinceService,
             IPriceFormatter priceFormatter, IAffiliateService affiliateService,
             ICustomerService customerService, IOrderService orderService,
-            IPermissionService permissionService,
-			AdminAreaSettings adminAreaSettings,
-			CustomerSettings customerSettings)
+            IPermissionService permissionService, AdminAreaSettings adminAreaSettings,
+			CustomerSettings customerSettings, IAddressService addressService)
         {
             this._localizationService = localizationService;
             this._workContext = workContext;
@@ -69,7 +70,8 @@ namespace SmartStore.Admin.Controllers
             this._permissionService = permissionService;
 			this._adminAreaSettings = adminAreaSettings;
 			this._customerSettings = customerSettings;
-        }
+			this._addressService = addressService;
+		}
 
         #endregion
 
@@ -88,7 +90,7 @@ namespace SmartStore.Admin.Controllers
                 if (!excludeProperties)
                 {
                     model.Active = affiliate.Active;
-                    model.Address = affiliate.Address.ToModel();
+                    model.Address = affiliate.Address.ToModel(_addressService);
                 }
             }
 
@@ -113,10 +115,9 @@ namespace SmartStore.Admin.Controllers
             model.Address.FaxEnabled = true;
 
 			model.GridPageSize = _adminAreaSettings.GridPageSize;
-			model.UsernamesEnabled = _customerSettings.UsernamesEnabled;
+			model.UsernamesEnabled = _customerSettings.CustomerLoginType != CustomerLoginType.Email;
 
             //address
-            //model.Address.AvailableCountries.Add(new SelectListItem() { Text = _localizationService.GetResource("Admin.Address.SelectCountry"), Value = "0" });
 			foreach (var c in _countryService.GetAllCountries(true))
 			{
 				model.Address.AvailableCountries.Add(new SelectListItem() { Text = c.Name, Value = c.Id.ToString(), Selected = (affiliate != null && c.Id == affiliate.Address.CountryId) });
@@ -130,7 +131,7 @@ namespace SmartStore.Admin.Controllers
 			}
 			else
 			{
-				model.Address.AvailableStates.Add(new SelectListItem() { Text = _localizationService.GetResource("Admin.Address.OtherNonUS"), Value = "0" });
+				model.Address.AvailableStates.Add(new SelectListItem() { Text = T("Admin.Address.OtherNonUS"), Value = "0" });
 			}
         }
 
@@ -217,7 +218,7 @@ namespace SmartStore.Admin.Controllers
                     affiliate.Address.StateProvinceId = null;
                 _affiliateService.InsertAffiliate(affiliate);
 
-                NotifySuccess(_localizationService.GetResource("Admin.Affiliates.Added"));
+                NotifySuccess(T("Admin.Affiliates.Added"));
                 return continueEditing ? RedirectToAction("Edit", new { id = affiliate.Id }) : RedirectToAction("List");
             }
 
@@ -266,7 +267,7 @@ namespace SmartStore.Admin.Controllers
                     affiliate.Address.StateProvinceId = null;
                 _affiliateService.UpdateAffiliate(affiliate);
 
-                NotifySuccess(_localizationService.GetResource("Admin.Affiliates.Updated"));
+                NotifySuccess(T("Admin.Affiliates.Updated"));
                 return continueEditing ? RedirectToAction("Edit", affiliate.Id) : RedirectToAction("List");
             }
 
@@ -288,7 +289,7 @@ namespace SmartStore.Admin.Controllers
                 return RedirectToAction("List");
 
             _affiliateService.DeleteAffiliate(affiliate);
-            NotifySuccess(_localizationService.GetResource("Admin.Affiliates.Deleted"));
+            NotifySuccess(T("Admin.Affiliates.Deleted"));
             return RedirectToAction("List");
         }
 
@@ -335,8 +336,14 @@ namespace SmartStore.Admin.Controllers
 
 			if (_permissionService.Authorize(StandardPermissionProvider.ManageAffiliates))
 			{
-				var affiliate = _affiliateService.GetAffiliateById(affiliateId);
-				var customers = _customerService.GetAllCustomers(affiliate.Id, command.Page - 1, command.PageSize);
+				var q = new CustomerSearchQuery
+				{
+					AffiliateId = affiliateId,
+					PageIndex = command.Page - 1,
+					PageSize = command.PageSize
+				};
+
+				var customers = _customerService.SearchCustomers(q);
 
 				model.Data = customers.Select(customer =>
 				{

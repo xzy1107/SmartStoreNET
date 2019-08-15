@@ -61,11 +61,11 @@ namespace SmartStore.Admin.Controllers
 			// TODO: DRY, similar code in ProductController (ProductAttributeValueList, ProductAttributeValueEditPopup...)
 			if (option != null)
 			{
-				model.NameString = option.ColorSquaresRgb.IsEmpty() ? option.Name : $"{option.Name} - {option.ColorSquaresRgb}";
+				model.NameString = Server.HtmlEncode(option.Color.IsEmpty() ? option.Name : $"{option.Name} - {option.Color}");
 				model.PriceAdjustmentString = (option.ValueType == ProductVariantAttributeValueType.Simple ? option.PriceAdjustment.ToString("G29") : "");
 				model.WeightAdjustmentString = (option.ValueType == ProductVariantAttributeValueType.Simple ? option.WeightAdjustment.ToString("G29") : "");
 				model.TypeName = option.ValueType.GetLocalizedEnum(Services.Localization, Services.WorkContext);
-				model.TypeNameClass = (option.ValueType == ProductVariantAttributeValueType.ProductLinkage ? "fa fa-link mr8" : "hide hidden-xs-up");
+				model.TypeNameClass = (option.ValueType == ProductVariantAttributeValueType.ProductLinkage ? "fa fa-link mr-2" : "d-none hide hidden-xs-up");
 
 				var linkedProduct = _productService.GetProductById(option.LinkedProductId);
 				if (linkedProduct != null)
@@ -138,8 +138,6 @@ namespace SmartStore.Admin.Controllers
 					.Select(x =>
 					{
 						var model = x.ToModel();
-						//model.OptionCount = x.ProductAttributeOptions.Count;
-
 						return model;
 					})
 					.ToList();
@@ -424,7 +422,7 @@ namespace SmartStore.Admin.Controllers
 			var model = new ProductAttributeOptionModel
 			{
 				ProductAttributeOptionsSetId = id,
-				ColorSquaresRgb = string.Empty,
+				Color = string.Empty,
 				Quantity = 1
 			};
 
@@ -444,6 +442,8 @@ namespace SmartStore.Admin.Controllers
 			{
 				var entity = model.ToEntity();
 
+				MediaHelper.UpdatePictureTransientStateFor(entity, m => m.PictureId);
+
 				try
 				{
 					_productAttributeService.InsertProductAttributeOption(entity);
@@ -453,8 +453,6 @@ namespace SmartStore.Admin.Controllers
 					ModelState.AddModelError("", exception.Message);
 					return View(model);
 				}
-
-				MediaHelper.UpdatePictureTransientStateFor(entity, m => m.PictureId);
 
 				try
 				{
@@ -503,6 +501,8 @@ namespace SmartStore.Admin.Controllers
 				entity = model.ToEntity(entity);
 				entity.LinkedProductId = entity.ValueType == ProductVariantAttributeValueType.Simple ? 0 : model.LinkedProductId;
 
+				MediaHelper.UpdatePictureTransientStateFor(entity, m => m.PictureId);
+
 				try
 				{
 					_productAttributeService.UpdateProductAttributeOption(entity);
@@ -514,8 +514,6 @@ namespace SmartStore.Admin.Controllers
 					ModelState.AddModelError("", exception.Message);
 					return View(model);
 				}
-
-				MediaHelper.UpdatePictureTransientStateFor(entity, m => m.PictureId);
 
 				ViewBag.RefreshPage = true;
 				ViewBag.btnId = btnId;

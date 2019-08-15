@@ -1,18 +1,13 @@
 ﻿using System;
-using System.Linq;
 using System.Collections.Generic;
 using System.Xml;
 using SmartStore.Collections;
 using System.IO;
-using SmartStore.Utilities;
-using System.Web;
 
 namespace SmartStore.Core.Themes
 {
-
 	public class ThemeManifest : ComparableObject<ThemeManifest>
     {
-
         internal ThemeManifest()
         {
         }
@@ -48,7 +43,15 @@ namespace SmartStore.Core.Themes
 				return null;
 
 			virtualBasePath = virtualBasePath.EnsureEndsWith("/");
+
 			var themeDirectory = new DirectoryInfo(themePath);
+
+			var isSymLink = themeDirectory.IsSymbolicLink();
+			if (isSymLink)
+			{
+				themeDirectory = new DirectoryInfo(themeDirectory.GetFinalPathName());
+			}
+
 			var themeConfigFile = new FileInfo(System.IO.Path.Combine(themeDirectory.FullName, "theme.config"));
 
 			if (themeConfigFile.Exists)
@@ -71,6 +74,7 @@ namespace SmartStore.Core.Themes
 				{
 					FolderName = themeDirectory.Name,
 					FullPath = themeDirectory.FullName,
+					IsSymbolicLink = isSymLink,
 					Configuration = doc,
 					VirtualBasePath = virtualBasePath,
 					BaseTheme = baseTheme
@@ -99,28 +103,32 @@ namespace SmartStore.Core.Themes
 			protected internal set; 
 		}
 
-        /// <summary>
-        /// Gets the physical path of the theme
-        /// </summary>
-        public string Path 
-		{ 
-			get; 
-			protected internal set; 
+		/// <summary>
+		/// Determines whether the theme directory is a symbolic link to another target.
+		/// </summary>
+		public bool IsSymbolicLink
+		{
+			get;
+			protected internal set;
 		}
 
-        public string PreviewImageUrl 
+		/// <summary>
+		/// Gets the physical path of the theme. In case of a symbolic link,
+		/// returns the link's target path.
+		/// </summary>
+		public string Path
+		{
+			get;
+			protected internal set;
+		}
+
+		public string PreviewImageUrl 
 		{ 
 			get; 
 			protected internal set; 
 		}
 
         public string PreviewText 
-		{ 
-			get; 
-			protected internal set; 
-		}
-
-        public bool SupportRtl 
 		{ 
 			get; 
 			protected internal set; 
@@ -180,14 +188,16 @@ namespace SmartStore.Core.Themes
 				}
 
 				var baseVars = this.BaseTheme.Variables;
-				var merged = new Dictionary<string, ThemeVariableInfo>(baseVars, StringComparer.OrdinalIgnoreCase);
+				var mergedVars = new Dictionary<string, ThemeVariableInfo>(baseVars, StringComparer.OrdinalIgnoreCase);
+				var newVars = new List<ThemeVariableInfo>();
+
 				foreach (var localVar in _variables)
 				{
-					if (merged.ContainsKey(localVar.Key))
+					if (mergedVars.ContainsKey(localVar.Key))
 					{
 						// Overridden var in child: update existing.
-						var baseVar = merged[localVar.Key];
-						merged[localVar.Key] = new ThemeVariableInfo 
+						var baseVar = mergedVars[localVar.Key];
+						mergedVars[localVar.Key] = new ThemeVariableInfo 
 						{
 							Name = baseVar.Name,
 							Type = baseVar.Type,
@@ -198,9 +208,23 @@ namespace SmartStore.Core.Themes
 					}
 					else
 					{
-						// New var in child: add to list.
-						merged.Add(localVar.Key, localVar.Value);
+						// New var in child: add to temp list.
+						newVars.Add(localVar.Value);
 					}
+				}
+
+				var merged = new Dictionary<string, ThemeVariableInfo>(StringComparer.OrdinalIgnoreCase);
+
+				foreach (var newVar in newVars)
+				{
+					// New child theme vars must come first in final list
+					// to avoid wrong references in existing vars
+					merged.Add(newVar.Name, newVar);
+				}
+
+				foreach (var kvp in mergedVars)
+				{
+					merged.Add(kvp.Key, kvp.Value);
 				}
 
 				return merged;
@@ -321,5 +345,4 @@ namespace SmartStore.Core.Themes
 		MissingBaseTheme = -1,
 		Active = 0,
 	}
-
 }

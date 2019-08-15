@@ -20,7 +20,6 @@ namespace SmartStore.Core.Domain.Catalog
 
         /// <summary>
         /// Gets or sets the product variant attribute alias 
-        /// (an optional key for advanced customization)
         /// </summary>
 		[DataMember]
 		public string Alias { get; set; }
@@ -29,6 +28,7 @@ namespace SmartStore.Core.Domain.Catalog
         /// Gets or sets the product variant attribute name
         /// </summary>
 		[DataMember]
+		[Index]
 		public string Name { get; set; }
 
         /// <summary>
@@ -38,10 +38,10 @@ namespace SmartStore.Core.Domain.Catalog
         public int PictureId { get; set; }
 
         /// <summary>
-        /// Gets or sets the color RGB value (used with "Color squares" attribute type)
+        /// Gets or sets the color RGB value (used with "Boxes" attribute type)
         /// </summary>
 		[DataMember]
-		public virtual string ColorSquaresRgb { get; set; }
+		public string Color { get; set; }
 
         /// <summary>
         /// Gets or sets the price adjustment
@@ -72,6 +72,7 @@ namespace SmartStore.Core.Domain.Catalog
 		/// Gets or sets the type Id
 		/// </summary>
 		[DataMember]
+		[Index]
 		public int ValueTypeId { get; set; }
 
 		/// <summary>

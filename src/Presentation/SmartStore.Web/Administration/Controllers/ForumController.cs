@@ -4,12 +4,14 @@ using System.Web.Mvc;
 using SmartStore.Admin.Models.Forums;
 using SmartStore.Core.Domain.Forums;
 using SmartStore.Services;
+using SmartStore.Services.Customers;
 using SmartStore.Services.Forums;
 using SmartStore.Services.Helpers;
 using SmartStore.Services.Localization;
 using SmartStore.Services.Security;
 using SmartStore.Services.Seo;
 using SmartStore.Services.Stores;
+using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Controllers;
 using SmartStore.Web.Framework.Filters;
 using SmartStore.Web.Framework.Security;
@@ -21,27 +23,34 @@ namespace SmartStore.Admin.Controllers
     {
         private readonly IForumService _forumService;
 		private readonly ICommonServices _services;
-        private readonly IDateTimeHelper _dateTimeHelper;
 		private readonly IStoreMappingService _storeMappingService;
-		private readonly ILanguageService _languageService;
+        private readonly IAclService _aclService;
+        private readonly ICustomerService _customerService;
+        private readonly ILanguageService _languageService;
 		private readonly ILocalizedEntityService _localizedEntityService;
 		private readonly IUrlRecordService _urlRecordService;
+        private readonly IDateTimeHelper _dateTimeHelper;
 
-        public ForumController(IForumService forumService,
+        public ForumController(
+            IForumService forumService,
 			ICommonServices services,
-            IDateTimeHelper dateTimeHelper,
-			IStoreMappingService storeMappingService,
+            IStoreMappingService storeMappingService,
+            IAclService aclService,
+            ICustomerService customerService,
 			ILanguageService languageService,
 			ILocalizedEntityService localizedEntityService,
-			IUrlRecordService urlRecordService)
+			IUrlRecordService urlRecordService,
+            IDateTimeHelper dateTimeHelper)
         {
             _forumService = forumService;
 			_services = services;
-            _dateTimeHelper = dateTimeHelper;
 			_storeMappingService = storeMappingService;
+            _aclService = aclService;
+            _customerService = customerService;
 			_languageService = languageService;
 			_localizedEntityService = localizedEntityService;
 			_urlRecordService = urlRecordService;
+            _dateTimeHelper = dateTimeHelper;
         }
 
 		#region Utilities
@@ -49,12 +58,9 @@ namespace SmartStore.Admin.Controllers
 		[NonAction]
 		private void PrepareForumGroupModel(ForumGroupModel model, ForumGroup forumGroup, bool excludeProperties)
 		{
-			if (model == null)
-				throw new ArgumentNullException("model");
+			Guard.NotNull(model, nameof(model));
 
 			var allStores = _services.StoreService.GetAllStores();
-
-			model.AvailableStores = allStores.Select(s => s.ToModel()).ToList();
 
 			if (forumGroup != null)
 			{
@@ -63,13 +69,14 @@ namespace SmartStore.Admin.Controllers
 
 			if (!excludeProperties)
 			{
-				if (forumGroup != null)
-					model.SelectedStoreIds = _storeMappingService.GetStoresIdsWithAccess(forumGroup);
-				else
-					model.SelectedStoreIds = new int[0];
-			}
+				model.SelectedStoreIds = _storeMappingService.GetStoresIdsWithAccess(forumGroup);
+                model.SelectedCustomerRoleIds = _aclService.GetCustomerRoleIdsWithAccessTo(forumGroup);
+            }
 
-			ViewBag.StoreCount = allStores.Count;
+			model.AvailableStores = allStores.ToSelectListItems(model.SelectedStoreIds);
+            model.AvailableCustomerRoles = _customerService.GetAllCustomerRoles(true).ToSelectListItems(model.SelectedCustomerRoleIds);
+
+            ViewBag.StoreCount = allStores.Count;
 		}
 
 		[NonAction]
@@ -112,7 +119,7 @@ namespace SmartStore.Admin.Controllers
             if (!_services.Permissions.Authorize(StandardPermissionProvider.ManageForums))
                 return AccessDeniedView();
 
-            var forumGroupsModel = _forumService.GetAllForumGroups(true)
+            var forumGroupsModel = _forumService.GetAllForumGroups(0, true)
                 .Select(fg =>
                 {
                     var forumGroupModel = fg.ToModel();
@@ -155,7 +162,9 @@ namespace SmartStore.Admin.Controllers
         public ActionResult CreateForumGroup(ForumGroupModel model, bool continueEditing)
         {
             if (!_services.Permissions.Authorize(StandardPermissionProvider.ManageForums))
+            {
                 return AccessDeniedView();
+            }
 
             if (ModelState.IsValid)
             {
@@ -168,15 +177,15 @@ namespace SmartStore.Admin.Controllers
 
 				UpdateLocales(model, forumGroup);
 
-				_storeMappingService.SaveStoreMappings<ForumGroup>(forumGroup, model.SelectedStoreIds);
+				SaveStoreMappings(forumGroup, model);
+                SaveAclMappings(forumGroup, model);
 
-                NotifySuccess(_services.Localization.GetResource("Admin.ContentManagement.Forums.ForumGroup.Added"));
+                NotifySuccess(T("Admin.ContentManagement.Forums.ForumGroup.Added"));
 
                 return continueEditing ? RedirectToAction("EditForumGroup", new { forumGroup.Id }) : RedirectToAction("List");
             }
 
-            //If we got this far, something failed, redisplay form
-
+            // If we got this far, something failed, redisplay form.
 			PrepareForumGroupModel(model, null, true);
 
             return View(model);
@@ -191,7 +200,7 @@ namespace SmartStore.Admin.Controllers
 
 			AddLocales(_languageService, model.Locales);
 
-            foreach (var forumGroup in _forumService.GetAllForumGroups(true))
+            foreach (var forumGroup in _forumService.GetAllForumGroups(0, true))
             {
                 var forumGroupModel = forumGroup.ToModel();
                 model.ForumGroups.Add(forumGroupModel);
@@ -222,7 +231,7 @@ namespace SmartStore.Admin.Controllers
             }
 
             //If we got this far, something failed, redisplay form
-            foreach (var forumGroup in _forumService.GetAllForumGroups(true))
+            foreach (var forumGroup in _forumService.GetAllForumGroups(0, true))
             {
                 var forumGroupModel = forumGroup.ToModel();
                 model.ForumGroups.Add(forumGroupModel);
@@ -261,11 +270,15 @@ namespace SmartStore.Admin.Controllers
         public ActionResult EditForumGroup(ForumGroupModel model, bool continueEditing)
         {
             if (!_services.Permissions.Authorize(StandardPermissionProvider.ManageForums))
+            {
                 return AccessDeniedView();
+            }
 
             var forumGroup = _forumService.GetForumGroupById(model.Id);
             if (forumGroup == null)
+            {
                 return RedirectToAction("List");
+            }
 
             if (ModelState.IsValid)
             {
@@ -278,15 +291,15 @@ namespace SmartStore.Admin.Controllers
 
 				UpdateLocales(model, forumGroup);
 
-				_storeMappingService.SaveStoreMappings<ForumGroup>(forumGroup, model.SelectedStoreIds);
+				SaveStoreMappings(forumGroup, model);
+                SaveAclMappings(forumGroup, model);
 
-                NotifySuccess(_services.Localization.GetResource("Admin.ContentManagement.Forums.ForumGroup.Updated"));
+                NotifySuccess(T("Admin.ContentManagement.Forums.ForumGroup.Updated"));
 
                 return continueEditing ? RedirectToAction("EditForumGroup", forumGroup.Id) : RedirectToAction("List");
             }
 
-            //If we got this far, something failed, redisplay form
-
+            // If we got this far, something failed, redisplay form.
 			PrepareForumGroupModel(model, forumGroup, true);
 
             return View(model);
@@ -310,7 +323,7 @@ namespace SmartStore.Admin.Controllers
 				locale.SeName = forum.GetSeName(languageId, false, false);
 			});
 
-            foreach (var forumGroup in _forumService.GetAllForumGroups(true))
+            foreach (var forumGroup in _forumService.GetAllForumGroups(0, true))
             {
                 var forumGroupModel = forumGroup.ToModel();
                 model.ForumGroups.Add(forumGroupModel);
@@ -345,7 +358,7 @@ namespace SmartStore.Admin.Controllers
             }
 
             //If we got this far, something failed, redisplay form
-            foreach (var forumGroup in _forumService.GetAllForumGroups(true))
+            foreach (var forumGroup in _forumService.GetAllForumGroups(0, true))
             {
                 var forumGroupModel = forumGroup.ToModel();
                 model.ForumGroups.Add(forumGroupModel);

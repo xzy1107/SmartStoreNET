@@ -1,13 +1,14 @@
-﻿using System;
-using System.Xml.Serialization;
+﻿using FluentValidation;
 using FluentValidation.Attributes;
-using Newtonsoft.Json;
-using SmartStore.GoogleMerchantCenter.Validators;
 using SmartStore.Web.Framework;
+using System;
+using System.Collections.Generic;
+using System.Web.Mvc;
+using System.Xml.Serialization;
 
 namespace SmartStore.GoogleMerchantCenter.Models
 {
-	[Serializable]
+    [Serializable]
 	[Validator(typeof(ProfileConfigurationValidator))]
 	public class ProfileConfigurationModel
 	{
@@ -18,22 +19,14 @@ namespace SmartStore.GoogleMerchantCenter.Models
 			SpecialPrice = true;
 		}
 
+		[XmlIgnore]
+		public string LanguageSeoCode { get; set; }
+
+		[XmlIgnore]
+		public List<SelectListItem> AvailableCategories { get; set; }
+
 		[SmartResourceDisplayName("Plugins.Feed.Froogle.DefaultGoogleCategory")]
 		public string DefaultGoogleCategory { get; set; }
-
-		[XmlIgnore]
-		public string[] AvailableGoogleCategories { get; set; }
-
-		[XmlIgnore]
-		public string AvailableGoogleCategoriesAsJson
-		{
-			get
-			{
-				if (AvailableGoogleCategories != null && AvailableGoogleCategories.Length > 0)
-					return JsonConvert.SerializeObject(AvailableGoogleCategories);
-				return "";
-			}
-		}
 
 		[SmartResourceDisplayName("Plugins.Feed.Froogle.AdditionalImages")]
 		public bool AdditionalImages { get; set; }
@@ -74,4 +67,12 @@ namespace SmartStore.GoogleMerchantCenter.Models
 		[SmartResourceDisplayName("Plugins.Feed.Froogle.ExportBasePrice")]
 		public bool ExportBasePrice { get; set; }
 	}
+
+    public class ProfileConfigurationValidator : AbstractValidator<ProfileConfigurationModel>
+    {
+        public ProfileConfigurationValidator()
+        {
+            RuleFor(x => x.ExpirationDays).InclusiveBetween(0, 29);
+        }
+    }
 }

@@ -1,13 +1,15 @@
-using SmartStore.Core.Domain.Localization;
-using System.Runtime.Serialization;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Runtime.Serialization;
+using SmartStore.Core.Domain.Localization;
 using SmartStore.Core.Search;
+using SmartStore.Core.Search.Facets;
 
 namespace SmartStore.Core.Domain.Catalog
 {
-    /// <summary>
-    /// Represents a product attribute
-    /// </summary>
+	/// <summary>
+	/// Represents a product attribute
+	/// </summary>
 	[DataContract]
 	public partial class ProductAttribute : BaseEntity, ILocalizedEntity, ISearchAlias
 	{
@@ -35,6 +37,7 @@ namespace SmartStore.Core.Domain.Catalog
 		/// Gets or sets whether the attribute can be filtered
 		/// </summary>
 		[DataMember]
+		[Index]
 		public bool AllowFiltering { get; set; }
 
 		/// <summary>
@@ -42,6 +45,24 @@ namespace SmartStore.Core.Domain.Catalog
 		/// </summary>
 		[DataMember]
 		public int DisplayOrder { get; set; }
+
+        /// <summary>
+        /// Gets or sets the facet template hint. Only effective in accordance with MegaSearchPlus plugin.
+        /// </summary>
+        [DataMember]
+		public FacetTemplateHint FacetTemplateHint { get; set; }
+
+        /// <summary>
+        /// Specifies whether option names should be included in the search index. Only effective in accordance with MegaSearchPlus plugin.
+        /// </summary>
+        [DataMember]
+        public bool IndexOptionNames { get; set; }
+
+		/// <summary>
+		/// Gets or sets export mappings.
+		/// </summary>
+		[DataMember]
+		public string ExportMappings { get; set; }
 
 		/// <summary>
 		/// Gets or sets the prooduct attribute option sets

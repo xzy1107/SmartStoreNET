@@ -9,18 +9,14 @@ namespace SmartStore.Services.Messages
 {
 	public class NewsLetterSubscriptionService : INewsLetterSubscriptionService
     {
-        private readonly IEventPublisher _eventPublisher;
-        private readonly IDbContext _context;
         private readonly IRepository<NewsLetterSubscription> _subscriptionRepository;
+		private readonly ICommonServices _services;
 
-        public NewsLetterSubscriptionService(IDbContext context,
-			IRepository<NewsLetterSubscription> subscriptionRepository,
-			IEventPublisher eventPublisher)
+		public NewsLetterSubscriptionService(IRepository<NewsLetterSubscription> subscriptionRepository, ICommonServices services)
         {
-            _context = context;
             _subscriptionRepository = subscriptionRepository;
-            _eventPublisher = eventPublisher;
-        }
+			_services = services;
+		}
 
         /// <summary>
         /// Inserts a newsletter subscription
@@ -29,30 +25,24 @@ namespace SmartStore.Services.Messages
         /// <param name="publishSubscriptionEvents">if set to <c>true</c> [publish subscription events].</param>
         public void InsertNewsLetterSubscription(NewsLetterSubscription newsLetterSubscription, bool publishSubscriptionEvents = true)
         {
-            if (newsLetterSubscription == null)
-            {
-                throw new ArgumentNullException("newsLetterSubscription");
-            }
+			Guard.NotNull(newsLetterSubscription, nameof(newsLetterSubscription));
 
 			if (newsLetterSubscription.StoreId == 0)
 			{
 				throw new SmartException("News letter subscription must be assigned to a valid store.");
 			}
 
-            //Handle e-mail
+            // Handle e-mail
             newsLetterSubscription.Email = EnsureSubscriberEmailOrThrow(newsLetterSubscription.Email);
 
-            //Persist
+            // Persist
             _subscriptionRepository.Insert(newsLetterSubscription);
 
-            //Publish the subscription event 
+            // Publish the subscription event 
             if (newsLetterSubscription.Active)
             {
                 PublishSubscriptionEvent(newsLetterSubscription.Email, true, publishSubscriptionEvents);
             }
-
-            //Publish event
-            _eventPublisher.EntityInserted(newsLetterSubscription);
         }
 
         /// <summary>
@@ -62,48 +52,42 @@ namespace SmartStore.Services.Messages
         /// <param name="publishSubscriptionEvents">if set to <c>true</c> [publish subscription events].</param>
         public void UpdateNewsLetterSubscription(NewsLetterSubscription newsLetterSubscription, bool publishSubscriptionEvents = true)
         {
-            if (newsLetterSubscription == null)
-            {
-                throw new ArgumentNullException("newsLetterSubscription");
-            }
+			Guard.NotNull(newsLetterSubscription, nameof(newsLetterSubscription));
 
 			if (newsLetterSubscription.StoreId == 0)
 			{
 				throw new SmartException("News letter subscription must be assigned to a valid store.");
 			}
 
-            //Handle e-mail
+            // Handle e-mail
             newsLetterSubscription.Email = EnsureSubscriberEmailOrThrow(newsLetterSubscription.Email);
 
-            //Get original subscription record
-            var originalSubscription = _context.LoadOriginalCopy(newsLetterSubscription);
+            // Get original subscription record
+            var originalSubscription = _services.DbContext.LoadOriginalCopy(newsLetterSubscription);
 
-            //Persist
+            // Persist
             _subscriptionRepository.Update(newsLetterSubscription);
 
-            //Publish the subscription event 
+            // Publish the subscription event 
             if ((originalSubscription.Active == false && newsLetterSubscription.Active) ||
                 (newsLetterSubscription.Active && (originalSubscription.Email != newsLetterSubscription.Email)))
             {
-                //If the previous entry was false, but this one is true, publish a subscribe.
+                // If the previous entry was false, but this one is true, publish a subscribe.
                 PublishSubscriptionEvent(newsLetterSubscription.Email, true, publishSubscriptionEvents);
             }
             
             if ((originalSubscription.Active && newsLetterSubscription.Active) && 
                 (originalSubscription.Email != newsLetterSubscription.Email))
             {
-                //If the two emails are different publish an unsubscribe.
+                // If the two emails are different publish an unsubscribe.
                 PublishSubscriptionEvent(originalSubscription.Email, false, publishSubscriptionEvents);
             }
 
             if ((originalSubscription.Active && !newsLetterSubscription.Active))
             {
-                //If the previous entry was true, but this one is false
+                // If the previous entry was true, but this one is false
                 PublishSubscriptionEvent(originalSubscription.Email, false, publishSubscriptionEvents);
             }
-
-            //Publish event
-            _eventPublisher.EntityUpdated(newsLetterSubscription);
         }
 
         /// <summary>
@@ -113,16 +97,12 @@ namespace SmartStore.Services.Messages
         /// <param name="publishSubscriptionEvents">if set to <c>true</c> [publish subscription events].</param>
         public virtual void DeleteNewsLetterSubscription(NewsLetterSubscription newsLetterSubscription, bool publishSubscriptionEvents = true)
         {
-            if (newsLetterSubscription == null)
-				throw new ArgumentNullException("newsLetterSubscription");
+			Guard.NotNull(newsLetterSubscription, nameof(newsLetterSubscription));
 
             _subscriptionRepository.Delete(newsLetterSubscription);
 
             //Publish the unsubscribe event 
             PublishSubscriptionEvent(newsLetterSubscription.Email, false, publishSubscriptionEvents);
-
-            //event notification
-            _eventPublisher.EntityDeleted(newsLetterSubscription);
         }
 
 		public virtual bool? AddNewsLetterSubscriptionFor(bool add, string email, int storeId)
@@ -136,7 +116,10 @@ namespace SmartStore.Services.Messages
 				{
 					if (add)
 					{
-						newsletter.Active = true;
+						if (!newsletter.Active)
+						{
+							_services.MessageFactory.SendNewsLetterSubscriptionActivationMessage(newsletter, _services.WorkContext.WorkingLanguage.Id);
+						}
 						UpdateNewsLetterSubscription(newsletter);
 						result = true;
 					}
@@ -150,14 +133,19 @@ namespace SmartStore.Services.Messages
 				{
 					if (add)
 					{
-						InsertNewsLetterSubscription(new NewsLetterSubscription
+						newsletter = new NewsLetterSubscription
 						{
 							NewsLetterSubscriptionGuid = Guid.NewGuid(),
 							Email = email,
-							Active = true,
+							Active = false,
 							CreatedOnUtc = DateTime.UtcNow,
-							StoreId = storeId
-						});
+							StoreId = storeId,
+                            WorkingLanguageId = _services.WorkContext.WorkingLanguage.Id
+						};
+						InsertNewsLetterSubscription(newsletter);
+
+						_services.MessageFactory.SendNewsLetterSubscriptionActivationMessage(newsletter, _services.WorkContext.WorkingLanguage.Id);
+
 						result = true;
 					}
 				}
@@ -263,14 +251,14 @@ namespace SmartStore.Services.Messages
         {
             if (publishSubscriptionEvents)
             {
-                if (isSubscribe)
+				if (isSubscribe)
                 {
-                    _eventPublisher.PublishNewsletterSubscribe(email);
-                }
+					_services.EventPublisher.Publish(new EmailSubscribedEvent(email));
+				}
                 else
                 {
-                    _eventPublisher.PublishNewsletterUnsubscribe(email);
-                }
+					_services.EventPublisher.Publish(new EmailUnsubscribedEvent(email));
+				}
             }
         }
 

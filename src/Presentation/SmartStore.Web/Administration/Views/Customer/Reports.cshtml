@@ -5,14 +5,14 @@
 }
 <div class="section-header">
     <div class="title">
-        <i class="fa fa-bar-chart-o"></i>
+        <i class="far fa-chart-bar"></i>
         @T("Admin.Customers.Reports")
     </div>
     <div class="options">
     </div>
 </div>
 
-@Html.SmartStore().TabStrip().Name("customer-reports").Items(x =>
+@Html.SmartStore().TabStrip().Name("customer-reports").Style(TabsStyle.Material).Items(x =>
 {
     x.Add().Text(T("Admin.Customers.Reports.BestBy.BestByOrderTotal").Text).Content(TabBestByOrderTotal()).Selected(true);
     x.Add().Text(T("Admin.Customers.Reports.BestBy.BestByNumberOfOrders").Text).Content(TabBestByNumberOfOrders());

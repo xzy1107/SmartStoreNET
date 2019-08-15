@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Web.Routing;
 using System.Web.WebPages;
 using Newtonsoft.Json;
@@ -35,9 +33,13 @@ namespace SmartStore.Web.Framework.UI
 
         public string ImageUrl { get; set; }
 
-        public string Icon { get; set; }
+		public int? ImageId { get; set; }
+
+		public string Icon { get; set; }
 
         public string Text { get; set; }
+
+		public bool Rtl { get; set; }
 
 		public string Summary { get; set; }
 
@@ -91,8 +93,11 @@ namespace SmartStore.Web.Framework.UI
             }
             set
             {
-                _actionName = value;
-                _routeName = (string)(_url = null);
+				if (_actionName != value)
+				{
+					_actionName = value;
+					_routeName = (string)(_url = null);
+				}
             }
         }
 
@@ -105,8 +110,11 @@ namespace SmartStore.Web.Framework.UI
             }
             set
             {
-                _controllerName = value;
-                _routeName = (string)(_url = null);
+				if (_controllerName != value)
+				{
+					_controllerName = value;
+					_routeName = (string)(_url = null);
+				}
             }
         }
 
@@ -119,8 +127,11 @@ namespace SmartStore.Web.Framework.UI
             }
             set
             {
-                _routeName = value;
-                _controllerName = _actionName = (string)(_url = null);
+				if (_routeName != value)
+				{
+					_routeName = value;
+					_controllerName = _actionName = (string)(_url = null);
+				}
             }
         }
 
@@ -135,10 +146,12 @@ namespace SmartStore.Web.Framework.UI
             }
             set
             {
-                _url = value;
-                _routeName = _controllerName = (string)(_actionName = null);
-                this.RouteValues.Clear();
-
+				if (_url != value)
+				{
+					_url = value;
+					_routeName = _controllerName = (string)(_actionName = null);
+					this.RouteValues.Clear();
+				}
             }
         }
 

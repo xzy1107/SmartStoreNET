@@ -67,8 +67,7 @@ namespace SmartStore.Services.Localization
 
         public string StripSeoCode()
         {
-            string seoCode;
-            if (IsLocalizedUrl(out seoCode))
+            if (IsLocalizedUrl(out var seoCode))
             {
                 this.RelativePath = this.RelativePath.Substring(seoCode.Length).TrimStart('/');
                 //if (this.RelativePath.IsEmpty())
@@ -100,7 +99,7 @@ namespace SmartStore.Services.Localization
                 }
             }
 
-            this.RelativePath = "{0}/{1}".FormatCurrent(seoCode, this.RelativePath);
+            this.RelativePath = "{0}/{1}".FormatCurrent(seoCode, this.RelativePath).TrimEnd('/');
             return this.RelativePath;
         }
 
@@ -108,10 +107,12 @@ namespace SmartStore.Services.Localization
         {
             string path = this.ApplicationPath.EnsureEndsWith("/");
             path = path + this.RelativePath;
+
             if (path.Length > 1 && path[0] != '/')
             {
                 path = "/" + path;
             }
+
             return path;
         }
 
@@ -128,6 +129,7 @@ namespace SmartStore.Services.Localization
             {
                 result = "/" + result;
             }
+
             return result;
         }
     }

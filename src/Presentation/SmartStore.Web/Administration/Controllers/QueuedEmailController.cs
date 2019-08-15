@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Web;
 using System.Web.Mvc;
 using SmartStore.Admin.Models.Messages;
@@ -105,11 +106,13 @@ namespace SmartStore.Admin.Controllers
         [FormValueRequired("go-to-email-by-number")]
         public ActionResult GoToEmailByNumber(QueuedEmailListModel model)
         {
-            var queuedEmail = _queuedEmailService.GetQueuedEmailById(model.GoDirectlyToNumber);
-            if (queuedEmail != null)
-                return RedirectToAction("Edit", "QueuedEmail", new { id = queuedEmail.Id });
-            else
-                return List();
+            var queuedEmail = _queuedEmailService.GetQueuedEmailById(model.GoDirectlyToNumber ?? 0);
+			if (queuedEmail != null)
+			{
+				return RedirectToAction("Edit", "QueuedEmail", new { id = queuedEmail.Id });
+			}
+
+			return List();
         }
 
 		public ActionResult Edit(int id)
@@ -172,9 +175,7 @@ namespace SmartStore.Admin.Controllers
             {
                 Priority = queuedEmail.Priority,
                 From = queuedEmail.From,
-                FromName = queuedEmail.FromName,
                 To = queuedEmail.To,
-                ToName = queuedEmail.ToName,
                 CC = queuedEmail.CC,
                 Bcc = queuedEmail.Bcc,
                 Subject = queuedEmail.Subject,
@@ -191,7 +192,7 @@ namespace SmartStore.Admin.Controllers
         }
 
 		[HttpPost, ActionName("Edit"), FormValueRequired("sendnow")]
-		public ActionResult SendNow(QueuedEmailModel queuedEmailModel)
+		public async Task<ActionResult> SendNow(QueuedEmailModel queuedEmailModel)
 		{
 			if (!_permissionService.Authorize(StandardPermissionProvider.ManageMessageQueue))
 				return AccessDeniedView();
@@ -200,7 +201,7 @@ namespace SmartStore.Admin.Controllers
 			if (queuedEmail == null)
 				return RedirectToAction("List");
 
-			var result = _queuedEmailService.SendEmail(queuedEmail);
+			var result = await _queuedEmailService.SendEmailAsync(queuedEmail);
 
 			if (result)
 				NotifySuccess(_localizationService.GetResource("Admin.Common.TaskSuccessfullyProcessed"));

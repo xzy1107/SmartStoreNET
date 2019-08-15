@@ -9,13 +9,8 @@ using SmartStore.Services.Security;
 
 namespace SmartStore.Services.Customers
 {
-	/// <summary>
-	/// Customer registration service
-	/// </summary>
 	public partial class CustomerRegistrationService : ICustomerRegistrationService
     {
-        #region Fields
-
         private readonly ICustomerService _customerService;
         private readonly IEncryptionService _encryptionService;
         private readonly INewsLetterSubscriptionService _newsLetterSubscriptionService;
@@ -24,49 +19,41 @@ namespace SmartStore.Services.Customers
 		private readonly IStoreContext _storeContext;
         private readonly IEventPublisher _eventPublisher;
 
-        #endregion
-
-        #region Ctor
-
-        /// <summary>
-        /// Ctor
-        /// </summary>
         public CustomerRegistrationService(ICustomerService customerService, 
             IEncryptionService encryptionService, 
             INewsLetterSubscriptionService newsLetterSubscriptionService,
             RewardPointsSettings rewardPointsSettings, CustomerSettings customerSettings,
             IStoreContext storeContext, IEventPublisher eventPublisher)
         {
-            this._customerService = customerService;
-            this._encryptionService = encryptionService;
-            this._newsLetterSubscriptionService = newsLetterSubscriptionService;
-            this._rewardPointsSettings = rewardPointsSettings;
-            this._customerSettings = customerSettings;
-			this._storeContext = storeContext;
-            this._eventPublisher = eventPublisher;
+            _customerService = customerService;
+            _encryptionService = encryptionService;
+            _newsLetterSubscriptionService = newsLetterSubscriptionService;
+            _rewardPointsSettings = rewardPointsSettings;
+            _customerSettings = customerSettings;
+			_storeContext = storeContext;
+            _eventPublisher = eventPublisher;
 
 			T = NullLocalizer.Instance;
 		}
 
-		#endregion
-
 		public Localizer T { get; set; }
 
-		#region Methods
-
-		/// <summary>
-		/// Validate customer
-		/// </summary>
-		/// <param name="usernameOrEmail">Username or email</param>
-		/// <param name="password">Password</param>
-		/// <returns>Result</returns>
 		public virtual bool ValidateCustomer(string usernameOrEmail, string password)
         {
             Customer customer = null;
-            if (_customerSettings.UsernamesEnabled)
-                customer = _customerService.GetCustomerByUsername(usernameOrEmail);
-            else
+
+            if (_customerSettings.CustomerLoginType == CustomerLoginType.Email)
+            {
                 customer = _customerService.GetCustomerByEmail(usernameOrEmail);
+            }
+            else if (_customerSettings.CustomerLoginType == CustomerLoginType.Username)
+            {
+                customer = _customerService.GetCustomerByUsername(usernameOrEmail);
+            }
+            else
+            {
+                customer = _customerService.GetCustomerByEmail(usernameOrEmail) ?? _customerService.GetCustomerByUsername(usernameOrEmail);
+            }
 
             if (customer == null || customer.Deleted || !customer.Active)
                 return false;
@@ -106,11 +93,6 @@ namespace SmartStore.Services.Customers
             return isValid;
         }
 
-        /// <summary>
-        /// Register customer
-        /// </summary>
-        /// <param name="request">Request</param>
-        /// <returns>Result</returns>
         public virtual CustomerRegistrationResult RegisterCustomer(CustomerRegistrationRequest request)
         {
 			Guard.NotNull(request, nameof(request));
@@ -123,56 +105,57 @@ namespace SmartStore.Services.Customers
                 result.AddError(T("Account.Register.Errors.CannotRegisterSearchEngine"));
                 return result;
             }
+
             if (request.Customer.IsBackgroundTaskAccount())
             {
                 result.AddError(T("Account.Register.Errors.CannotRegisterTaskAccount"));
                 return result;
             }
+
             if (request.Customer.IsRegistered())
             {
                 result.AddError(T("Account.Register.Errors.AlreadyRegistered"));
                 return result;
             }
-            if (String.IsNullOrEmpty(request.Email))
+
+            if (!request.Email.HasValue())
             {
                 result.AddError(T("Account.Register.Errors.EmailIsNotProvided"));
                 return result;
             }
+
 			if (!request.Email.IsEmail())
             {
                 result.AddError(T("Common.WrongEmail"));
                 return result;
             }
-            if (String.IsNullOrWhiteSpace(request.Password))
+
+            if (!request.Password.HasValue())
             {
                 result.AddError(T("Account.Register.Errors.PasswordIsNotProvided"));
                 return result;
             }
-            if (_customerSettings.UsernamesEnabled)
+
+            if (_customerSettings.CustomerLoginType != CustomerLoginType.Email && !request.Username.HasValue())
             {
-                if (String.IsNullOrEmpty(request.Username))
-                {
-                    result.AddError(T("Account.Register.Errors.UsernameIsNotProvided"));
-                    return result;
-                }
+                result.AddError(T("Account.Register.Errors.UsernameIsNotProvided"));
+                return result;
             }
 
-            //validate unique user
+            // Validate unique user
             if (_customerService.GetCustomerByEmail(request.Email) != null)
             {
                 result.AddError(T("Account.Register.Errors.EmailAlreadyExists"));
                 return result;
             }
-            if (_customerSettings.UsernamesEnabled)
+
+            if (_customerSettings.CustomerLoginType != CustomerLoginType.Email && _customerService.GetCustomerByUsername(request.Username) != null)
             {
-                if (_customerService.GetCustomerByUsername(request.Username) != null)
-                {
-                    result.AddError(T("Account.Register.Errors.UsernameAlreadyExists"));
-                    return result;
-                }
+                result.AddError(T("Account.Register.Errors.UsernameAlreadyExists"));
+                return result;
             }
 
-            //at this point request is valid
+            // At this point request is valid
             request.Customer.Username = request.Username;
             request.Customer.Email = request.Email;
             request.Customer.PasswordFormat = request.PasswordFormat;
@@ -200,7 +183,7 @@ namespace SmartStore.Services.Customers
 				request.Customer.CustomerRoles.Add(customerRole);
 			}
 
-			//add to 'Registered' role
+			// Add to 'Registered' role
 			var registeredRole = _customerService.GetCustomerRoleBySystemName(SystemCustomerRoleNames.Registered);
 			if (registeredRole == null)
 			{
@@ -209,14 +192,14 @@ namespace SmartStore.Services.Customers
 
             request.Customer.CustomerRoles.Add(registeredRole);
 
-            //remove from 'Guests' role
+            // Remove from 'Guests' role
             var guestRole = request.Customer.CustomerRoles.FirstOrDefault(cr => cr.SystemName == SystemCustomerRoleNames.Guests);
 			if (guestRole != null)
 			{
 				request.Customer.CustomerRoles.Remove(guestRole);
 			}
 
-			//Add reward points for customer registration (if enabled)
+			// Add reward points for customer registration (if enabled)
 			if (_rewardPointsSettings.Enabled && _rewardPointsSettings.PointsForRegistration > 0)
 			{
 				request.Customer.AddRewardPointsHistoryEntry(_rewardPointsSettings.PointsForRegistration, T("RewardPoints.Message.RegisteredAsCustomer"));
@@ -228,23 +211,17 @@ namespace SmartStore.Services.Customers
             return result;
         }
         
-        /// <summary>
-        /// Change password
-        /// </summary>
-        /// <param name="request">Request</param>
-        /// <returns>Result</returns>
         public virtual PasswordChangeResult ChangePassword(ChangePasswordRequest request)
         {
-            if (request == null)
-                throw new ArgumentNullException("request");
+			Guard.NotNull(request, nameof(request));
 
-            var result = new PasswordChangeResult();
-            if (String.IsNullOrWhiteSpace(request.Email))
+			var result = new PasswordChangeResult();
+            if (!request.Email.HasValue())
             {
                 result.AddError(T("Account.ChangePassword.Errors.EmailIsNotProvided"));
                 return result;
             }
-            if (String.IsNullOrWhiteSpace(request.NewPassword))
+            if (!request.NewPassword.HasValue())
             {
                 result.AddError(T("Account.ChangePassword.Errors.PasswordIsNotProvided"));
                 return result;
@@ -256,7 +233,6 @@ namespace SmartStore.Services.Customers
                 result.AddError(T("Account.ChangePassword.Errors.EmailNotFound"));
                 return result;
             }
-
 
             var requestIsValid = false;
             if (request.ValidateRequest)
@@ -319,15 +295,9 @@ namespace SmartStore.Services.Customers
             return result;
         }
 
-        /// <summary>
-        /// Sets a user email
-        /// </summary>
-        /// <param name="customer">Customer</param>
-        /// <param name="newEmail">New email</param>
         public virtual void SetEmail(Customer customer, string newEmail)
         {
-            if (customer == null)
-                throw new ArgumentNullException("customer");
+			Guard.NotNull(customer, nameof(customer));
 
             newEmail = newEmail.Trim();
             string oldEmail = customer.Email;
@@ -338,15 +308,15 @@ namespace SmartStore.Services.Customers
             if (newEmail.Length > 100)
                 throw new SmartException(T("Account.EmailUsernameErrors.EmailTooLong"));
 
-            var customer2 = _customerService.GetCustomerByEmail(newEmail);
-            if (customer2 != null && customer.Id != customer2.Id)
+            var newCustomer = _customerService.GetCustomerByEmail(newEmail);
+            if (newCustomer != null && customer.Id != newCustomer.Id)
                 throw new SmartException(T("Account.EmailUsernameErrors.EmailAlreadyExists"));
 
             customer.Email = newEmail;
             _customerService.UpdateCustomer(customer);
 
             //update newsletter subscription (if required)
-            if (!String.IsNullOrEmpty(oldEmail) && !oldEmail.Equals(newEmail, StringComparison.InvariantCultureIgnoreCase))
+            if (oldEmail.HasValue() && !oldEmail.Equals(newEmail, StringComparison.InvariantCultureIgnoreCase))
             {
                 var subscriptionOld = _newsLetterSubscriptionService.GetNewsLetterSubscriptionByEmail(oldEmail, _storeContext.CurrentStore.Id);
                 if (subscriptionOld != null)
@@ -357,17 +327,11 @@ namespace SmartStore.Services.Customers
             }
         }
 
-        /// <summary>
-        /// Sets a customer username
-        /// </summary>
-        /// <param name="customer">Customer</param>
-        /// <param name="newUsername">New Username</param>
         public virtual void SetUsername(Customer customer, string newUsername)
         {
-            if (customer == null)
-                throw new ArgumentNullException("customer");
+			Guard.NotNull(customer, nameof(customer));
 
-            if (!_customerSettings.UsernamesEnabled)
+			if (_customerSettings.CustomerLoginType == CustomerLoginType.Email)
                 throw new SmartException("Usernames are disabled");
 
             if (!_customerSettings.AllowUsersToChangeUsernames)
@@ -378,14 +342,12 @@ namespace SmartStore.Services.Customers
             if (newUsername.Length > 100)
                 throw new SmartException(T("Account.EmailUsernameErrors.UsernameTooLong"));
 
-            var user2 = _customerService.GetCustomerByUsername(newUsername);
-            if (user2 != null && customer.Id != user2.Id)
+            var newUser = _customerService.GetCustomerByUsername(newUsername);
+            if (newUser != null && customer.Id != newUser.Id)
                 throw new SmartException(T("Account.EmailUsernameErrors.UsernameAlreadyExists"));
 
             customer.Username = newUsername;
             _customerService.UpdateCustomer(customer);
         }
-
-        #endregion
     }
 }

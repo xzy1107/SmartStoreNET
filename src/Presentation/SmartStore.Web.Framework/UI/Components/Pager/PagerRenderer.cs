@@ -178,11 +178,11 @@ namespace SmartStore.Web.Framework.UI
 			// Alignment
 			if (pager.Alignment == PagerAlignment.Right)
 			{
-				pager.HtmlAttributes.AppendCssClass("text-xs-right");
+				pager.HtmlAttributes.AppendCssClass("text-right");
 			}
 			else if (pager.Alignment == PagerAlignment.Centered)
 			{
-				pager.HtmlAttributes.AppendCssClass("text-xs-center");
+				pager.HtmlAttributes.AppendCssClass("text-center");
 			}
 
 			writer.AddAttributes(pager.HtmlAttributes);
@@ -192,7 +192,7 @@ namespace SmartStore.Web.Framework.UI
 
             if (pager.ShowSummary && pager.Model.TotalPages > 1)
             {
-                writer.AddAttribute("class", "pagination-summary pull-left");
+                writer.AddAttribute("class", "pagination-summary float-left");
                 writer.RenderBeginTag("div");
                 writer.WriteEncodedText(pager.CurrentPageText.FormatInvariant(pager.Model.PageNumber, pager.Model.TotalPages, pager.Model.TotalCount));
                 writer.RenderEndTag(); // div
@@ -214,6 +214,16 @@ namespace SmartStore.Web.Framework.UI
 			else if (pager.Size == PagerSize.Mini)
 			{
 				ulAttrs.AppendCssClass("pagination-xs");
+			}
+
+			// BS 4 alignment
+			if (pager.Alignment == PagerAlignment.Centered)
+			{
+				ulAttrs.AppendCssClass("justify-content-center");
+			}
+			else if (pager.Alignment == PagerAlignment.Right)
+			{
+				ulAttrs.AppendCssClass("justify-content-end");
 			}
 
 			writer.AddAttributes(ulAttrs);

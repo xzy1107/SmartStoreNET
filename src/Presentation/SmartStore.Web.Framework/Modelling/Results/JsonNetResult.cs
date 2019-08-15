@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Web.Mvc;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
@@ -53,21 +49,19 @@ namespace SmartStore.Web.Framework.Modelling
 			var serializerSettings = _settings ?? new JsonSerializerSettings
 			{
 				MissingMemberHandling = MissingMemberHandling.Ignore,
+				TypeNameHandling = TypeNameHandling.Objects,
+				ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+				NullValueHandling = NullValueHandling.Ignore,
+				DateTimeZoneHandling = DateTimeZoneHandling.RoundtripKind,
+				DateFormatHandling = DateFormatHandling.MicrosoftDateFormat,
 
 				// Limit the object graph we'll consume to a fixed depth. This prevents stackoverflow exceptions
 				// from deserialization errors that might occur from deeply nested objects.
-				MaxDepth = 32,
-
-				// Do not change this setting
-				// Setting this to None prevents Json.NET from loading malicious, unsafe, or security-sensitive types
-				TypeNameHandling = TypeNameHandling.None
+				MaxDepth = 32
 			};
 
 			if (_settings == null)
 			{
-				serializerSettings.DateTimeZoneHandling = DateTimeZoneHandling.RoundtripKind;
-				serializerSettings.DateFormatHandling = DateFormatHandling.MicrosoftDateFormat;
-				
 				var utcDateTimeConverter = new UTCDateTimeConverter(_dateTimeHelper, new JavaScriptDateTimeConverter());
 				serializerSettings.Converters.Add(utcDateTimeConverter);
 			}

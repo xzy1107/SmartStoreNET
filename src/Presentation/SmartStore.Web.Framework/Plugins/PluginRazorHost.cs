@@ -4,6 +4,7 @@ using System.Web.Hosting;
 using System.Web.Mvc.Razor;
 using System.Web.WebPages.Razor;
 using SmartStore.Utilities;
+using SmartStore.Web.Framework.Theming;
 
 namespace SmartStore.Web.Framework.Plugins
 {
@@ -30,7 +31,7 @@ namespace SmartStore.Web.Framework.Plugins
 		{
 			if (CommonHelper.IsDevEnvironment && HttpContext.Current.IsDebuggingEnabled)
 			{
-				var file = HostingEnvironment.VirtualPathProvider.GetFile(virtualPath) as DebugPluginVirtualFile;
+				var file = HostingEnvironment.VirtualPathProvider.GetFile(virtualPath) as DebugVirtualFile;
 				if (file != null)
 				{
 					PhysicalPath = file.PhysicalPath;

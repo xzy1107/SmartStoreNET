@@ -1,6 +1,7 @@
 ﻿using System;
 using SmartStore.Web.Controllers;
 using NUnit.Framework;
+using SmartStore.Services.Catalog.Modelling;
 
 namespace SmartStore.Web.MVC.Tests.Public.Infrastructure
 {
@@ -53,7 +54,8 @@ namespace SmartStore.Web.MVC.Tests.Public.Infrastructure
 			"~/boards/forum/14/test-forum-slug/page/2".ShouldMapTo<BoardsController>(c => c.Forum(14, 2));
 			"~/boards/forumgroup/15/".ShouldMapTo<BoardsController>(c => c.ForumGroup(15));
 			"~/boards/forumgroup/15/test-forumgroup-slug/".ShouldMapTo<BoardsController>(c => c.ForumGroup(15));
-			"~/boards/search/".ShouldMapTo<BoardsController>(c => c.Search(null, null, null, null, null, 1));
+			//"~/boards/search/".ShouldMapTo<BoardsController>(c => c.Search(null, null, null, null, null, 1));
+            "~/boards/search/".ShouldMapTo<BoardsController>(c => c.Search(null));
         }
 
         [Test]
@@ -93,7 +95,6 @@ namespace SmartStore.Web.MVC.Tests.Public.Infrastructure
 			"~/customer/passwordrecovery/".ShouldMapTo<CustomerController>(c => c.PasswordRecovery());
 			"~/customer/passwordrecoveryconfirm".ShouldMapTo<CustomerController>(c => c.PasswordRecoveryConfirm(null, null));
 
-			"~/customer/myaccount/".ShouldMapTo<CustomerController>(c => c.MyAccount());
 			"~/customer/info/".ShouldMapTo<CustomerController>(c => c.Info());
 			"~/customer/addresses/".ShouldMapTo<CustomerController>(c => c.Addresses());
 			"~/customer/orders/".ShouldMapTo<CustomerController>(c => c.Orders(null));
@@ -124,7 +125,7 @@ namespace SmartStore.Web.MVC.Tests.Public.Infrastructure
         [Test]
         public void Cart_routes()
         {
-            "~/cart/".ShouldMapTo<ShoppingCartController>(c => c.Cart());
+            "~/cart/".ShouldMapTo<ShoppingCartController>(c => c.Cart(null));
 			"~/wishlist".ShouldMapTo<ShoppingCartController>(c => c.Wishlist(null));
 			"~/wishlist/aa74c80f-1edd-43f7-85df-a3cccc1b47b9".ShouldMapTo<ShoppingCartController>(c => c.Wishlist(new Guid("aa74c80f-1edd-43f7-85df-a3cccc1b47b9")));
 			"~/shoppingcart/emailwishlist".ShouldMapTo<ShoppingCartController>(c => c.EmailWishlist());
@@ -161,9 +162,7 @@ namespace SmartStore.Web.MVC.Tests.Public.Infrastructure
         public void Common_routes()
         {
             "~/contactus".ShouldMapTo<HomeController>(c => c.ContactUs());
-			"~/sitemap".ShouldMapTo<HomeController>(c => c.Sitemap(null));
-			"~/sitemap.xml".ShouldMapTo<HomeController>(c => c.SitemapSeo(1));
-            "~/settings".ShouldMapTo<CommonController>(c => c.Settings());
+			"~/storeclosed".ShouldMapTo<HomeController>(c => c.StoreClosed());
         }
 
         [Test]
@@ -193,13 +192,6 @@ namespace SmartStore.Web.MVC.Tests.Public.Infrastructure
             "~/news/rss/1".ShouldMapTo<NewsController>(c => c.ListRss(1));
 			//"~/news/2/".ShouldMapTo<NewsController>(c => c.NewsItem(2));
             //"~/news/2/se-name".ShouldMapTo<NewsController>(c => c.NewsItem(2));
-        }
-
-        [Test]
-        public void Topic_routes()
-        {
-            "~/t/somename".ShouldMapTo<TopicController>(c => c.TopicDetails("somename"));
-            "~/t-popup/somename".ShouldMapTo<TopicController>(c => c.TopicDetailsPopup("somename"));
         }
     }
 }

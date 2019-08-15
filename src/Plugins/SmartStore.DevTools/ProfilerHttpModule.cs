@@ -12,14 +12,19 @@ namespace SmartStore.DevTools
 		
 		public void Init(HttpApplication context)
 		{
-			context.BeginRequest += OnBeginRequest;
+			if (DevToolsPlugin.HasPendingMigrations())
+			{
+				return;
+			}
+
+			context.AcquireRequestState += OnAcquireRequestState;
 			context.EndRequest += OnEndRequest;
 		}
 
-		public static void OnBeginRequest(object sender, EventArgs e)
+		private static void OnAcquireRequestState(object sender, EventArgs e)
 		{
 			var app = (HttpApplication)sender;
-			if (ShouldProfile(app))
+			if (!MiniProfilerStarted(app) && ShouldProfile(app))
 			{
 				MiniProfiler.Start();
 				if (app.Context != null && app.Context.Items != null)
@@ -29,18 +34,23 @@ namespace SmartStore.DevTools
 			}
 		}
 
-		public static void OnEndRequest(object sender, EventArgs e)
+		private static void OnEndRequest(object sender, EventArgs e)
 		{
 			var app = (HttpApplication)sender;
-			if (app.Context != null && app.Context.Items != null && app.Context.Items.Contains(MP_KEY))
+			if (MiniProfilerStarted(app))
 			{
 				MiniProfiler.Stop();
 			}
 		}
 
+		private static bool MiniProfilerStarted(HttpApplication app)
+		{
+			return app?.Context?.Items != null && app.Context.Items.Contains(MP_KEY);
+		}
+
 		private static bool ShouldProfile(HttpApplication app)
 		{
-			if (app.Context == null || app.Context.Request == null)
+			if (app?.Context?.Request == null)
 				return false;
 
 			if (!DataSettings.DatabaseIsInstalled())
@@ -50,25 +60,29 @@ namespace SmartStore.DevTools
 
 			var url = app.Context.Request.AppRelativeCurrentExecutionFilePath;
 			if (url.StartsWith("~/admin", StringComparison.InvariantCultureIgnoreCase) 
-				|| url.StartsWith("~/mini-profiler", StringComparison.InvariantCultureIgnoreCase) 
+				|| url.StartsWith("~/mini-profiler", StringComparison.InvariantCultureIgnoreCase)
 				|| url.StartsWith("~/bundles", StringComparison.InvariantCultureIgnoreCase)
+				|| url.StartsWith("~/plugin/", StringComparison.InvariantCultureIgnoreCase)
 				|| url.StartsWith("~/taskscheduler", StringComparison.InvariantCultureIgnoreCase))
 			{
 				return false;
 			}
 
-			ProfilerSettings settings;
-			if (!EngineContext.Current.ContainerManager.TryResolve<ProfilerSettings>(null, out settings))
+			ProfilerSettings settings = null;
+
+			if (EngineContext.Current.IsFullyInitialized)
 			{
-				return false;
+				try
+				{
+					settings = EngineContext.Current.Resolve<ProfilerSettings>();
+				}
+				catch
+				{
+					return true;
+				}
 			}
 
-			if (!settings.EnableMiniProfilerInPublicStore)
-			{
-				return false;
-			}
-
-			return true;
+			return settings == null ? true : settings.EnableMiniProfilerInPublicStore;
 		}
 
 		public void Dispose()

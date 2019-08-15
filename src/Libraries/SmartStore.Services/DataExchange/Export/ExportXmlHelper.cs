@@ -9,14 +9,15 @@ using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Directory;
 using SmartStore.Core.Domain.Discounts;
 using SmartStore.Core.Domain.Media;
+using SmartStore.Core.Domain.Orders;
 
 namespace SmartStore.Services.DataExchange.Export
 {
 	public class ExportXmlHelper : IDisposable
 	{
-		private XmlWriter _writer;
-		private CultureInfo _culture;
-		private bool _doNotDispose;
+		protected XmlWriter _writer;
+		protected CultureInfo _culture;
+		protected bool _doNotDispose;
 
 		public ExportXmlHelper(XmlWriter writer, bool doNotDispose = false, CultureInfo culture = null)
 		{
@@ -51,10 +52,7 @@ namespace SmartStore.Services.DataExchange.Export
 
 		public ExportXmlExclude Exclude { get; set; }
 
-		public XmlWriter Writer
-		{
-			get { return _writer; }
-		}
+		public XmlWriter Writer => _writer;
 
 		public void Dispose()
 		{
@@ -202,8 +200,13 @@ namespace SmartStore.Services.DataExchange.Export
 			_writer.Write("CreatedOnUtc", entity.CreatedOnUtc.ToString(_culture));
 			_writer.Write("UpdatedOnUtc", entity.UpdatedOnUtc.ToString(_culture));
 			_writer.Write("DomainEndings", entity.DomainEndings);
+            _writer.Write("RoundOrderItemsEnabled", entity.RoundOrderItemsEnabled.ToString());
+            _writer.Write("RoundNumDecimals", entity.RoundNumDecimals.ToString());
+            _writer.Write("RoundOrderTotalEnabled", entity.RoundOrderTotalEnabled.ToString());
+            _writer.Write("RoundOrderTotalDenominator", entity.RoundOrderTotalDenominator.ToString(_culture));
+            _writer.Write("RoundOrderTotalRule", ((int)entity.RoundOrderTotalRule).ToString());
 
-			WriteLocalized(currency);
+            WriteLocalized(currency);
 
 			if (node.HasValue())
 			{
@@ -291,6 +294,7 @@ namespace SmartStore.Services.DataExchange.Export
 			_writer.Write("DisplayLocale", entity.DisplayLocale);
 			_writer.Write("ColorHexValue", entity.ColorHexValue);
 			_writer.Write("DisplayOrder", entity.DisplayOrder.ToString());
+			_writer.Write("IsDefault", entity.IsDefault.ToString());
 
 			WriteLocalized(deliveryTime);
 
@@ -314,7 +318,8 @@ namespace SmartStore.Services.DataExchange.Export
 
 			_writer.Write("Id", entity.Id.ToString());
 			_writer.Write("Name", (string)quantityUnit.Name);
-			_writer.Write("Description", (string)quantityUnit.Description);
+            _writer.Write("NamePlural", (string)quantityUnit.NamePlural);
+            _writer.Write("Description", (string)quantityUnit.Description);
 			_writer.Write("DisplayLocale", entity.DisplayLocale);
 			_writer.Write("DisplayOrder", entity.DisplayOrder.ToString());
 			_writer.Write("IsDefault", entity.IsDefault.ToString());
@@ -498,7 +503,6 @@ namespace SmartStore.Services.DataExchange.Export
 			_writer.Write("RequiredProductIds", entity.RequiredProductIds);
 			_writer.Write("AutomaticallyAddRequiredProducts", entity.AutomaticallyAddRequiredProducts.ToString());
 			_writer.Write("IsDownload", entity.IsDownload.ToString());
-			_writer.Write("DownloadId", entity.DownloadId.ToString());
 			_writer.Write("UnlimitedDownloads", entity.UnlimitedDownloads.ToString());
 			_writer.Write("MaxNumberOfDownloads", entity.MaxNumberOfDownloads.ToString());
 			_writer.Write("DownloadExpirationDays", entity.DownloadExpirationDays.HasValue ? entity.DownloadExpirationDays.Value.ToString() : "");
@@ -527,7 +531,9 @@ namespace SmartStore.Services.DataExchange.Export
 			_writer.Write("AllowBackInStockSubscriptions", entity.AllowBackInStockSubscriptions.ToString());
 			_writer.Write("OrderMinimumQuantity", entity.OrderMinimumQuantity.ToString());
 			_writer.Write("OrderMaximumQuantity", entity.OrderMaximumQuantity.ToString());
-            _writer.Write("HideQuantityControl", entity.HideQuantityControl.ToString());
+			_writer.Write("QuantityStep", entity.QuantityStep.ToString());
+			_writer.Write("QuantiyControlType", ((int)entity.QuantiyControlType).ToString());
+			_writer.Write("HideQuantityControl", entity.HideQuantityControl.ToString());
             _writer.Write("AllowedQuantities", entity.AllowedQuantities);
 			_writer.Write("DisableBuyButton", entity.DisableBuyButton.ToString());
 			_writer.Write("DisableWishlistButton", entity.DisableWishlistButton.ToString());
@@ -544,6 +550,7 @@ namespace SmartStore.Services.DataExchange.Export
 			_writer.Write("MaximumCustomerEnteredPrice", entity.MaximumCustomerEnteredPrice.ToString(_culture));
 			_writer.Write("HasTierPrices", entity.HasTierPrices.ToString());
 			_writer.Write("HasDiscountsApplied", entity.HasDiscountsApplied.ToString());
+			_writer.Write("MainPictureId", entity.MainPictureId.HasValue ? entity.MainPictureId.Value.ToString() : "");
 			_writer.Write("Weight", ((decimal)product.Weight).ToString(_culture));
 			_writer.Write("Length", ((decimal)product.Length).ToString(_culture));
 			_writer.Write("Width", ((decimal)product.Width).ToString(_culture));
@@ -558,6 +565,7 @@ namespace SmartStore.Services.DataExchange.Export
 			_writer.Write("BasePriceInfo", (string)product._BasePriceInfo);
 			_writer.Write("VisibleIndividually", entity.VisibleIndividually.ToString());
 			_writer.Write("DisplayOrder", entity.DisplayOrder.ToString());
+			_writer.Write("IsSystemProduct", entity.IsSystemProduct.ToString());
 			_writer.Write("BundleTitleText", entity.BundleTitleText);
 			_writer.Write("BundlePerItemPricing", entity.BundlePerItemPricing.ToString());
 			_writer.Write("BundlePerItemShipping", entity.BundlePerItemShipping.ToString());
@@ -599,6 +607,35 @@ namespace SmartStore.Services.DataExchange.Export
 				_writer.WriteEndElement();	// AppliedDiscounts
 			}
 
+            if (product.Downloads != null)
+            {
+                _writer.WriteStartElement("Downloads");
+                foreach (dynamic download in product.Downloads)
+                {
+                    Download downloadEntity = download.Entity;
+
+                    _writer.WriteStartElement("Download");
+                    _writer.Write("Id", downloadEntity.Id.ToString());
+                    _writer.Write("DownloadGuid", downloadEntity.DownloadGuid.ToString());
+                    _writer.Write("UseDownloadUrl", downloadEntity.UseDownloadUrl.ToString());
+                    _writer.Write("DownloadUrl", downloadEntity.DownloadUrl);
+                    _writer.Write("ContentType", downloadEntity.ContentType);
+                    _writer.Write("Filename", downloadEntity.Filename);
+                    _writer.Write("Extension", downloadEntity.Extension);
+                    _writer.Write("IsNew", downloadEntity.IsNew.ToString());
+                    _writer.Write("IsTransient", downloadEntity.IsTransient.ToString());
+                    _writer.Write("UpdatedOnUtc", downloadEntity.UpdatedOnUtc.ToString(_culture));
+                    _writer.Write("MediaStorageId", downloadEntity.MediaStorageId.HasValue ? downloadEntity.MediaStorageId.Value.ToString() : "");
+                    _writer.Write("EntityId", downloadEntity.EntityId.ToString());
+                    _writer.Write("EntityName", downloadEntity.EntityName);
+                    _writer.Write("FileVersion", downloadEntity.FileVersion);
+                    _writer.Write("Changelog", downloadEntity.Changelog);
+
+                    _writer.WriteEndElement();	// Download
+                }
+                _writer.WriteEndElement();	// Downloads
+            }
+
 			if (product.TierPrices != null)
 			{
 				_writer.WriteStartElement("TierPrices");
@@ -613,7 +650,8 @@ namespace SmartStore.Services.DataExchange.Export
 					_writer.Write("CustomerRoleId", entityTierPrice.CustomerRoleId.HasValue ? entityTierPrice.CustomerRoleId.Value.ToString() : "");
 					_writer.Write("Quantity", entityTierPrice.Quantity.ToString());
 					_writer.Write("Price", entityTierPrice.Price.ToString(_culture));
-					_writer.WriteEndElement();	// TierPrice
+                    _writer.Write("CalculationMethod", ((int)entityTierPrice.CalculationMethod).ToString());
+                    _writer.WriteEndElement();	// TierPrice
 				}
 				_writer.WriteEndElement();	// TierPrices
 			}
@@ -641,8 +679,9 @@ namespace SmartStore.Services.DataExchange.Export
 				foreach (dynamic pva in product.ProductAttributes)
 				{
 					ProductVariantAttribute entityPva = pva.Entity;
+                    ProductAttribute entityPa = pva.Attribute.Entity;
 
-					_writer.WriteStartElement("ProductAttribute");
+                    _writer.WriteStartElement("ProductAttribute");
 					_writer.Write("Id", entityPva.Id.ToString());
 					_writer.Write("TextPrompt", (string)pva.TextPrompt);
 					_writer.Write("IsRequired", entityPva.IsRequired.ToString());
@@ -650,12 +689,16 @@ namespace SmartStore.Services.DataExchange.Export
 					_writer.Write("DisplayOrder", entityPva.DisplayOrder.ToString());
 
 					_writer.WriteStartElement("Attribute");
-					_writer.Write("Id", ((int)pva.Attribute.Id).ToString());
-					_writer.Write("Alias", (string)pva.Attribute.Alias);
-					_writer.Write("Name", (string)pva.Attribute.Name);
-					_writer.Write("Description", (string)pva.Attribute.Description);
+					_writer.Write("Id", entityPa.Id.ToString());
+					_writer.Write("Alias", entityPa.Alias);
+					_writer.Write("Name", entityPa.Name);
+					_writer.Write("Description", entityPa.Description);
+                    _writer.Write("AllowFiltering", entityPa.AllowFiltering.ToString());
+                    _writer.Write("DisplayOrder", entityPa.DisplayOrder.ToString());
+                    _writer.Write("FacetTemplateHint", ((int)entityPa.FacetTemplateHint).ToString());
+                    _writer.Write("IndexOptionNames", entityPa.IndexOptionNames.ToString());
 
-					WriteLocalized(pva.Attribute);
+                    WriteLocalized(pva.Attribute);
 
 					_writer.WriteEndElement();	// Attribute
 
@@ -668,7 +711,7 @@ namespace SmartStore.Services.DataExchange.Export
 						_writer.Write("Id", entityPvav.Id.ToString());
 						_writer.Write("Alias", (string)value.Alias);
 						_writer.Write("Name", (string)value.Name);
-						_writer.Write("ColorSquaresRgb", (string)value.ColorSquaresRgb);
+						_writer.Write("Color", (string)value.Color);
 						_writer.Write("PriceAdjustment", ((decimal)value.PriceAdjustment).ToString(_culture));
 						_writer.Write("WeightAdjustment", ((decimal)value.WeightAdjustment).ToString(_culture));
 						_writer.Write("IsPreSelected", entityPvav.IsPreSelected.ToString());
@@ -710,7 +753,6 @@ namespace SmartStore.Services.DataExchange.Export
 					_writer.Write("BasePriceAmount", entityPvac.BasePriceAmount.HasValue ? entityPvac.BasePriceAmount.Value.ToString(_culture) : "");
 					_writer.Write("BasePriceBaseAmount", entityPvac.BasePriceBaseAmount.HasValue ? entityPvac.BasePriceBaseAmount.Value.ToString() : "");
 					_writer.Write("AssignedPictureIds", entityPvac.AssignedPictureIds);
-					_writer.Write("DeliveryTimeId", entityPvac.DeliveryTimeId.HasValue ? entityPvac.DeliveryTimeId.Value.ToString() : "");
 					_writer.Write("IsActive", entityPvac.IsActive.ToString());
 
 					WriteDeliveryTime(combination.DeliveryTime, "DeliveryTime");
@@ -820,6 +862,11 @@ namespace SmartStore.Services.DataExchange.Export
 					_writer.Write("Name", (string)option.SpecificationAttribute.Name);
 					_writer.Write("Alias", (string)option.SpecificationAttribute.Alias);
 					_writer.Write("DisplayOrder", entitySa.DisplayOrder.ToString());
+					_writer.Write("AllowFiltering", entitySa.AllowFiltering.ToString());
+					_writer.Write("ShowOnProductPage", entitySa.ShowOnProductPage.ToString());
+					_writer.Write("FacetSorting", ((int)entitySa.FacetSorting).ToString());
+					_writer.Write("FacetTemplateHint", ((int)entitySa.FacetTemplateHint).ToString());
+                    _writer.Write("IndexOptionNames", entitySa.IndexOptionNames.ToString());
 
 					WriteLocalized(option.SpecificationAttribute);
 
@@ -895,7 +942,15 @@ namespace SmartStore.Services.DataExchange.Export
 			_writer.Write("CreatedOnUtc", entity.CreatedOnUtc.ToString(_culture));
 			_writer.Write("LastLoginDateUtc", entity.LastLoginDateUtc.HasValue ? entity.LastLoginDateUtc.Value.ToString(_culture) : "");
 			_writer.Write("LastActivityDateUtc", entity.LastActivityDateUtc.ToString(_culture));
-			_writer.Write("RewardPointsBalance", ((int)customer._RewardPointsBalance).ToString());
+            //_writer.Write("Salutation", entity.Salutation); // TODO: marked as "for future use"
+            _writer.Write("Title", entity.Title);
+            _writer.Write("FirstName", entity.FirstName);
+            _writer.Write("LastName", entity.LastName);
+            _writer.Write("FullName", entity.FullName);
+            _writer.Write("Company", entity.Company);
+            _writer.Write("CustomerNumber", entity.CustomerNumber);
+            _writer.Write("BirthDate", entity.BirthDate.HasValue ? entity.BirthDate.Value.ToString(_culture) : "");
+            _writer.Write("RewardPointsBalance", ((int)customer._RewardPointsBalance).ToString());
 
 			if (customer.CustomerRoles != null)
 			{
@@ -933,6 +988,40 @@ namespace SmartStore.Services.DataExchange.Export
 			}
 
 			WriteGenericAttributes(customer);
+
+			if (node.HasValue())
+			{
+				_writer.WriteEndElement();
+			}
+		}
+
+		public void WriteShoppingCartItem(dynamic shoppingCartItem, string node)
+		{
+			if (shoppingCartItem == null)
+				return;
+
+			ShoppingCartItem entity = shoppingCartItem.Entity;
+
+			if (node.HasValue())
+			{
+				_writer.WriteStartElement(node);
+			}
+
+			_writer.Write("Id", entity.Id.ToString());
+			_writer.Write("StoreId", entity.StoreId.ToString());
+			_writer.Write("ParentItemId", entity.ParentItemId.HasValue ? entity.ParentItemId.Value.ToString() : "");
+			_writer.Write("BundleItemId", entity.BundleItemId.HasValue ? entity.BundleItemId.Value.ToString() : "");
+			_writer.Write("ShoppingCartTypeId", entity.ShoppingCartTypeId.ToString());
+			_writer.Write("CustomerId", entity.CustomerId.ToString());
+			_writer.Write("ProductId", entity.ProductId.ToString());
+			_writer.Write("AttributesXml", entity.AttributesXml, null, true);
+			_writer.Write("CustomerEnteredPrice", entity.CustomerEnteredPrice.ToString(_culture));
+			_writer.Write("Quantity", entity.Quantity.ToString());
+			_writer.Write("CreatedOnUtc", entity.CreatedOnUtc.ToString(_culture));
+			_writer.Write("UpdatedOnUtc", entity.UpdatedOnUtc.ToString(_culture));
+
+			WriteCustomer(shoppingCartItem.Customer, "Customer");
+			WriteProduct(shoppingCartItem.Product, "Product");
 
 			if (node.HasValue())
 			{

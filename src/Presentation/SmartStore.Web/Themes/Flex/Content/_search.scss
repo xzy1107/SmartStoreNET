@@ -1,24 +1,34 @@
-/// <reference path="shared/_mixins.scss" />
-/// <reference path="bs4/scss/bootstrap.scss" />
+/// <reference path="../../../Content/shared/_variables-shared.scss" />
+/// <reference path="../../../Content/shared/_mixins.scss" />
+/// <reference path="_variables.scss" />
+/// <reference path="../../../Content/bs4/scss/bootstrap.scss" />
 
 //
 // InstantSearch Box & Drop Styles
 // --------------------------------------------------
 
-$searchbox-border-color:            rgba(0,0,0, 0.12);
-$searchbox-border-active-color:     rgba(0,0,0, 0.2);
-$searchbox-hit-tag-color:           darken($brand-warning, 10%);
-
-$facet-selection-color:             darken($brand-success, 15%);
+$facet-selection-color:             darken($success, 15%);
 
 .instasearch-form {
     position: relative;
 }
 
+#instasearch-progress {
+    position: absolute;
+    z-index: 2;
+    width: 20px;
+    height: 20px;
+    top: 50%;
+    margin-top: -10px;
+    right: 56px;
+}
+
 .instasearch-term {
-    padding: 0.5rem 1rem;
-    border-radius: 2px;
     position: relative;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    border-radius: 2px;
+    background: $searchbox-bg;
     border-color: $searchbox-border-color;
     box-shadow: none;
     transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
@@ -28,21 +38,24 @@ $facet-selection-color:             darken($brand-success, 15%);
         box-shadow: 0 2px 6px 0 rgba(0,0,0, 0.12);
     }
      &:focus, &:active {
-        background-color: #fff;
+        background-color: $searchbox-focus-bg;
         border-color: $searchbox-border-active-color;
     }
 }
 
 .instasearch-button {
-    position: absolute;
+    position: absolute !important;
     z-index: 1;
     top: 0;
     right: 0;
-    border: 0;
+    bottom: 0;
+    border-left-width: 0;
+    height: initial !important;
     font-size: 1.2rem;
-    height: 100%;
-    padding: 0 0.25rem;
-    border-radius: 0 2px 2px 0;
+    padding: 0 0.25rem !important;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    box-shadow: none;
 }
 
 .instasearch-icon {
@@ -50,13 +63,14 @@ $facet-selection-color:             darken($brand-success, 15%);
     top: 0.12rem;
 }
 
-#instasearch-drop {
+.instasearch-drop {
     position: absolute;
     display: none;
     left: 0;
     top: 100%;
     margin-top: -1px;
     min-width: 100%;
+    max-width: 100%;
     min-height: 50px;
     border: 1px solid $searchbox-border-active-color;
     box-shadow: 0 6px 6px 0 rgba(0,0,0, 0.12);
@@ -72,7 +86,6 @@ $facet-selection-color:             darken($brand-success, 15%);
 .instasearch-drop-body {
     margin-top: 1.25rem;
     margin-bottom: 1.25rem;
-    //font-size: 0.85rem;
 }
 
 .instasearch-match {
@@ -80,12 +93,15 @@ $facet-selection-color:             darken($brand-success, 15%);
 }
 
 .instasearch-group-header {
-    text-transform: uppercase;
-    margin: 0.35rem 20px 0 20px;
+    margin: 0 20px;
     padding-bottom: 0.3rem;
-    font-size: 14px;
-    color: #aaa;
-    font-weight: 600; // rem gets too small on mobile
+    font-size: 22px; // rem gets too small on mobile
+    color: $info;
+    font-weight: $font-weight-light;
+
+    ~ .instasearch-group-header {
+        margin-top: 1.2rem;
+    }
 }
 
 .instasearch-hits {
@@ -97,6 +113,13 @@ $facet-selection-color:             darken($brand-success, 15%);
     .instasearch-col:first-child &:last-child {
         margin-bottom: 1rem;
     }
+
+    &.has-thumbs li {
+        border-bottom: 1px solid rgba(#000, 0.12);
+    }
+    &.has-thumbs li:last-child {
+        border-bottom: none;
+    }
 }
 
 @include media-breakpoint-up(sm) {
@@ -105,26 +128,26 @@ $facet-selection-color:             darken($brand-success, 15%);
     }
 }
 @include media-breakpoint-up(lg) {
-    .instasearch-row {
-        width: 740px;
+    .instasearch-drop {
+        max-width: none;
     }
-}
-@include media-breakpoint-up(xl) {
     .instasearch-row {
-        width: 740px;
+        width: 850px;
     }
 }
 
 .instasearch-hit {
-    display: block;
+    display: inline-flex;
+	align-items: baseline;
     position: relative;
     width: 100%;
-    padding: 0.35rem 20px;
+    padding: 8px 20px;
     clear: both;
     white-space: normal;
     text-decoration: none;
     color: $dropdown-link-color;
     font-size: 14px; // rem gets too small on mobile
+    line-height: 1.3;
 
     &:focus, &:hover, &.active, &.key-hover {
         color: $dropdown-link-hover-color;
@@ -139,23 +162,31 @@ $facet-selection-color:             darken($brand-success, 15%);
     padding-left: 0.2rem;
 }
 
-#instasearch-progress {
-    position: absolute;
-    z-index: 2;
-    width: 20px;
-    height: 20px;
-    top: 50%;
-    margin-top: -10px;
-    right: 56px;
+.instasearch-hit-wrapper {
+    overflow: hidden;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
 }
 
+.instasearch-hit-thumb {
+    width: 48px; 
+    min-width: 48px; 
+    max-height: 36px; 
+    padding-right: 12px;
+}
+
+.instasearch-hit-label-secondary {
+    padding-top: 4px;
+    color: $text-muted;
+}
 
 //
 // Search Page Styles
 // --------------------------------------------------
 
 .search-term {
-    color: $brand-danger;
+    color: $danger;
 }
 
 .search-hitcount {
@@ -164,7 +195,7 @@ $facet-selection-color:             darken($brand-success, 15%);
 
 
 //
-// Facettes
+// Facetes
 // --------------------------------------------------
 
 .facet-group {
@@ -177,8 +208,8 @@ $facet-selection-color:             darken($brand-success, 15%);
 	position: relative;
 	display: block;
     padding: 0.75rem 0;
-    font-size: $font-size-root;
-	font-weight: 600;
+    font-size: 16px;
+	font-weight: $font-weight-medium;
 	color: $body-color !important;
 	text-decoration: none !important;
 }
@@ -187,12 +218,10 @@ $facet-selection-color:             darken($brand-success, 15%);
     &:after {
 	    display: block;
 	    position: absolute;
-	    font-family: FontAwesome;
+        @include fontawesome-font("\f106", light); // angle-up
 	    font-size: 1.2rem;
 	    line-height: 1;
-	    content: "\f106";
         color: $body-color;
-	    //content: "\f077";
         right: 0;
 	    top: 50%;
 	    margin-top: -7px;
@@ -229,10 +258,8 @@ $facet-selection-color:             darken($brand-success, 15%);
 
 
 //
-// Facettes (Check/Radio)
+// Facetes (Check/Radio)
 // --------------------------------------------------
-
-$facet-control-size:        20px;
 
 .facet-control-ui {
     position: absolute;
@@ -330,11 +357,11 @@ $facet-control-size:        20px;
     position: relative;
     display: block;
     padding-left: $facet-control-size + ($facet-control-size / 1.5);
-    padding-top: 1px;
     padding-right: 8px;
+	padding-top: 1px;
 
     .facet-control-native:checked ~ & {
-        font-weight: 600;
+        font-weight: $font-weight-medium;
     }
 }
 
@@ -345,7 +372,7 @@ $facet-control-size:        20px;
 
 
 //
-// Facettes (active filters)
+// Facetes (active filters)
 // --------------------------------------------------
 
 .active-filters-container {
@@ -377,7 +404,7 @@ $facet-control-size:        20px;
         display: block;
         content: '\00d7';
         right: 0.375rem;
-        top: 0.2rem;
+        top: 2px;
         font-size: 1.25rem;
         line-height: 1;
     }
@@ -415,7 +442,7 @@ $facet-control-size:        20px;
             text-align: right;
             right: 2.5rem;
             vertical-align: middle;
-            line-height: 28px;
+            line-height: 1.8;
             font-weight: 400;
         }
     }
@@ -429,4 +456,9 @@ $facet-control-size:        20px;
     .facet-label {
         padding-right: 0;
     }
+}
+
+
+.has-active-filter .hide-on-active-filter {
+    display: none !important;
 }

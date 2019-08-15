@@ -9,7 +9,7 @@
 		normalizeOptions(this, options);
 
 		if (_.isEmpty(options.url)) {
-			console.log('doAjax can\'t find the url!');
+		    console.log('doAjax cannot find the URL!');
 		}
 		else if (!_.isFalse(options.valid)) {
 			doRequestSwitch(options);
@@ -42,7 +42,7 @@
 		normalizeOptions(this, options);
 
 		if (_.isEmpty(options.url)) {
-			console.log('doPostData can\'t find the url!');
+			console.log('doAjax.doPostData cannot find the URL!');
 		}
 		else if (_.isEmpty(options.ask)) {
 			createAndSubmitForm();
@@ -59,11 +59,7 @@
 		opt.ask = (_.isUndefined(opt.ask) ? $(element).attr('data-ask') : opt.ask);
 
 		if (_.isUndefined(opt.type)) {
-			opt.type = (_.isUndefined(opt.autoContainer) ? 'POST' : 'GET');
-		}
-
-		if (!_.isUndefined(opt.autoContainer)) {
-			opt.smallIcon = opt.autoContainer;
+			opt.type = 'POST';
 		}
 
         if ($(element).is('form')) {
@@ -73,7 +69,7 @@
 			    opt.url = $(element).attr('action');
 		}
 
-        opt.url = (_.isUndefined(opt.url) ? findUrl(element) : opt.url);
+		opt.url = (_.isUndefined(opt.url) ? findUrl(element) : opt.url);
 	}
 
 	function findUrl(element) {
@@ -83,10 +79,10 @@
 			if (typeof url === 'string' && url.substr(0, 11) === 'javascript:')
 				url = '';
 
-			if (_.isUndefined(url) || url.length <= 0)
+			if (_.isUndefined(url) || url.length <= 1)
 				url = $(element).attr('data-url');
 
-			if (_.isUndefined(url) || url.length <= 0)
+			if (_.isUndefined(url) || url.length <= 1)
 				url = $(element).attr('data-button');
 		}
 		return url;
@@ -120,17 +116,11 @@
 			type: opt.type,
 			data: opt.data,
 			url: opt.url + (_.isEmpty(opt.appendToUrl) ? '' : opt.appendToUrl),
-			async: opt.async,
+			async: opt.async === undefined ? true : opt.async,
 			beforeSend: function () {
-				if (!_.isUndefined(opt.autoContainer))
-					$(opt.autoContainer).empty();
-
 				_.call(opt.callbackBeforeSend);
 			},
 			success: function (response) {
-				if (!_.isUndefined(opt.autoContainer))
-					$(opt.autoContainer).html(response);
-
 				_.call(opt.callbackSuccess, response);
 			},
 			error: function (objXml) {

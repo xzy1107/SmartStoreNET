@@ -89,9 +89,8 @@ namespace SmartStore.Web.Controllers
                 }
                 return true;
             }
-            catch (Exception ex)
+            catch
             {
-				Logger.Error(ex);
 				return false;
             }
         }
@@ -241,13 +240,7 @@ namespace SmartStore.Web.Controllers
         [HttpPost]
         public async Task<JsonResult> Install(InstallModel model)
         {
-			var t = AsyncRunner.Run(
-						(c, ct, state) => InstallCore(c, (InstallModel)state), 
-						model,
-						CancellationToken.None, 
-						TaskCreationOptions.LongRunning, 
-						TaskScheduler.Default);
-
+			var t = AsyncRunner.Run((c, ct, state) => InstallCore(c, (InstallModel)state), model);
 			return Json(await t);
         }
 

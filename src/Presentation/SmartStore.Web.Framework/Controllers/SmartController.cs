@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Text;
 using System.Web;
 using System.Web.Mvc;
 using SmartStore.Core.Localization;
@@ -178,13 +177,24 @@ namespace SmartStore.Web.Framework.Controllers
 			return HttpNotFound();
 		}
 
-		protected virtual ActionResult RedirectToHomePageWithError(string reason, bool durable = true)
+		/// <summary>
+		/// Redirects to the configuration page of a plugin or a provider.
+		/// </summary>
+		/// <param name="systemName">The system name of the plugin or the provider.</param>
+		/// <param name="isPlugin"><c>true</c> plugin configuration, <c>false</c> provider configuration.</param>
+		protected virtual ActionResult RedirectToConfiguration(string systemName, bool isPlugin = true)
 		{
-			string message = T("Common.RequestProcessingFailed", this.RouteData.Values["controller"], this.RouteData.Values["action"], reason.NaIfEmpty());
+			Guard.NotEmpty(systemName, nameof(systemName));
 
-			Services.Notifier.Error(message, durable);
+			var actionName = isPlugin ? "ConfigurePlugin" : "ConfigureProvider";
 
-			return RedirectToRoute("HomePage");
+			if (ControllerContext.IsChildAction)
+			{
+				var url = Url.Action(actionName, "Plugin", new { systemName, area = "Admin" });
+				return new PermissiveRedirectResult(url);
+			}
+
+			return RedirectToAction(actionName, "Plugin", new { systemName, area = "Admin" });
 		}
 
 		/// <summary>

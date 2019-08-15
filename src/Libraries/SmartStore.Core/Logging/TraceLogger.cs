@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Logging;
@@ -70,12 +71,16 @@ namespace SmartStore.Core.Logging
 
 			if (exception != null && !exception.IsFatal())
 			{
-				message = message.Grow(exception.ToAllMessages(), Environment.NewLine);
+				message = message.Grow(exception.ToString(), Environment.NewLine);
 			}
 
 			if (message.HasValue())
 			{
-				_traceSource.TraceEvent(type, (int)type, "{0}: {1}".FormatCurrent(type.ToString().ToUpper(), message));
+				var msg = args != null && args.Any()
+					? message.FormatInvariant(args)
+					: message;
+
+				_traceSource.TraceEvent(type, (int)type, "{0}: {1}".FormatCurrent(type.ToString().ToUpper(), msg));
 			}
 		}
 

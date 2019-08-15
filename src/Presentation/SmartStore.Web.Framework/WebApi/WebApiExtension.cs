@@ -54,6 +54,10 @@ namespace SmartStore.Web.Framework.WebApi
 		{
 			return new HttpResponseException(HttpStatusCode.Forbidden);
 		}
+		public static HttpResponseException ExceptionForbidden(this ApiController apiController, string message)
+		{
+			return new HttpResponseException(apiController.Request.CreateErrorResponse(HttpStatusCode.Forbidden, message));
+		}
 		public static HttpResponseException ExceptionUnsupportedMediaType(this ApiController apiController)
 		{
 			return new HttpResponseException(HttpStatusCode.UnsupportedMediaType);
@@ -117,7 +121,7 @@ namespace SmartStore.Web.Framework.WebApi
 			try
 			{
 				foreach (var file in provider.FileData)
-					FileSystemHelper.Delete(file.LocalFileName);
+					FileSystemHelper.DeleteFile(file.LocalFileName);
 			}
 			catch { }
 		}

@@ -3,12 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Tasks;
 using SmartStore.Core.Caching;
 using SmartStore.Core.Domain.Logging;
 using SmartStore.Core.Domain.Messages;
 using SmartStore.Core.Domain.Tasks;
 using SmartStore.Core.Infrastructure.DependencyManagement;
+using SmartStore.Utilities.Threading;
 
 namespace SmartStore.Data.Caching
 {
@@ -18,6 +18,7 @@ namespace SmartStore.Data.Caching
 		private static readonly HashSet<string> _toxicSets = new HashSet<string>
 		{
 			typeof(ScheduleTask).Name,
+			typeof(ScheduleTaskHistory).Name,
 			typeof(Log).Name,
 			typeof(ActivityLog).Name,
 			typeof(QueuedEmail).Name
@@ -64,7 +65,7 @@ namespace SmartStore.Data.Caching
 			}
 		}
 
-		private bool IsTocix(IEnumerable<string> entitySets)
+		private bool IsToxic(IEnumerable<string> entitySets)
 		{
 			return entitySets.Any(x => _toxicSets.Contains(x));
 		}
@@ -88,7 +89,7 @@ namespace SmartStore.Data.Caching
 
 		public virtual DbCacheEntry RequestPut(string key, object value, string[] dependentEntitySets)
 		{
-			if (!Enabled || IsTocix(dependentEntitySets))
+			if (!Enabled || IsToxic(dependentEntitySets))
 			{
 				return null;
 			}
@@ -118,7 +119,7 @@ namespace SmartStore.Data.Caching
 		{
 			Guard.NotNull(entitySets, nameof(entitySets));
 
-			if (!Enabled || !entitySets.Any() || IsTocix(entitySets))
+			if (!Enabled || !entitySets.Any() || IsToxic(entitySets))
 				return;
 
 			var sets = entitySets.Distinct().ToArray();
@@ -192,13 +193,13 @@ namespace SmartStore.Data.Caching
 			key = HashKey(key);
 			var now = DateTime.UtcNow;
 
-			var entry = _cache.Get<DbCacheEntry>(key);
+			var entry = _cache.Get<DbCacheEntry>(key, independent: true);
 
 			if (entry != null)
 			{
 				if (entry.HasExpired(now))
 				{
-					lock (String.Intern(key))
+					using (KeyedLock.Lock(key))
 					{
 						InvalidateItemUnlocked(entry);
 					}
@@ -215,14 +216,14 @@ namespace SmartStore.Data.Caching
 
 		public virtual DbCacheEntry Put(string key, object value, IEnumerable<string> dependentEntitySets, TimeSpan? duration)
 		{
-			if (!Enabled || IsTocix(dependentEntitySets))
+			if (!Enabled || IsToxic(dependentEntitySets))
 			{
 				return null;
 			}
 
 			key = HashKey(key);
 
-			lock (String.Intern(key))
+			using (KeyedLock.Lock(key))
 			{
 				var entitySets = dependentEntitySets.Distinct().ToArray();
 				var entry =  new DbCacheEntry
@@ -248,15 +249,15 @@ namespace SmartStore.Data.Caching
 
 		public void Clear()
 		{
-			_cache.RemoveByPattern(KEYPREFIX);
-			_requestCache.Value.RemoveByPattern(KEYPREFIX);
+			_cache.RemoveByPattern(KEYPREFIX + "*");
+			_requestCache.Value.RemoveByPattern(KEYPREFIX + "*");
 		}
 
 		public virtual void InvalidateSets(IEnumerable<string> entitySets)
 		{
 			Guard.NotNull(entitySets, nameof(entitySets));
 
-			if (!Enabled || !entitySets.Any() || IsTocix(entitySets))
+			if (!Enabled || !entitySets.Any() || IsToxic(entitySets))
 				return;
 
 			var sets = entitySets.Distinct().ToArray();
@@ -290,7 +291,7 @@ namespace SmartStore.Data.Caching
 
 			Guard.NotEmpty(key, nameof(key));
 
-			lock (String.Intern(key))
+			using (KeyedLock.Lock(key))
 			{
 				InvalidateItemUnlocked(key);
 			}
@@ -305,7 +306,7 @@ namespace SmartStore.Data.Caching
 
 			if (_cache.Contains(key))
 			{
-				var entry = _cache.Get<DbCacheEntry>(key);
+				var entry = _cache.Get<DbCacheEntry>(key, true);
 				if (entry != null)
 				{
 					InvalidateItemUnlocked(entry);
@@ -361,8 +362,14 @@ namespace SmartStore.Data.Caching
 
 			using (var sha = new SHA1CryptoServiceProvider())
 			{
-				key = Convert.ToBase64String(sha.ComputeHash(Encoding.UTF8.GetBytes(key)));
-				return KEYPREFIX + "data:" + key;
+				try
+				{
+					return KEYPREFIX + "data:" + Convert.ToBase64String(sha.ComputeHash(Encoding.UTF8.GetBytes(key)));
+				}
+				catch
+				{
+					return KEYPREFIX + "data:" + key;
+				}
 			}
 		}
 	}

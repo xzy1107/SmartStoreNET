@@ -37,9 +37,6 @@ namespace SmartStore.Services.Directory
                 throw new ArgumentNullException("measureDimension");
 
             _measureDimensionRepository.Delete(measureDimension);
-
-            //event notification
-            _eventPublisher.EntityDeleted(measureDimension);
         }
         
         public virtual MeasureDimension GetMeasureDimensionById(int measureDimensionId)
@@ -77,9 +74,6 @@ namespace SmartStore.Services.Directory
                 throw new ArgumentNullException("measure");
 
             _measureDimensionRepository.Insert(measure);
-
-            //event notification
-            _eventPublisher.EntityInserted(measure);
         }
 
         public virtual void UpdateMeasureDimension(MeasureDimension measure)
@@ -88,9 +82,6 @@ namespace SmartStore.Services.Directory
                 throw new ArgumentNullException("measure");
 
             _measureDimensionRepository.Update(measure);
-
-            //event notification
-            _eventPublisher.EntityUpdated(measure);
         }
 
         public virtual decimal ConvertDimension(decimal quantity, 
@@ -147,9 +138,6 @@ namespace SmartStore.Services.Directory
                 throw new ArgumentNullException("measureWeight");
 
             _measureWeightRepository.Delete(measureWeight);
-
-            //event notification
-            _eventPublisher.EntityDeleted(measureWeight);
         }
 
         public virtual MeasureWeight GetMeasureWeightById(int measureWeightId)
@@ -162,14 +150,14 @@ namespace SmartStore.Services.Directory
 
         public virtual MeasureWeight GetMeasureWeightBySystemKeyword(string systemKeyword)
         {
-            if (String.IsNullOrEmpty(systemKeyword))
+            if (!systemKeyword.HasValue())
                 return null;
 
             var measureWeights = GetAllMeasureWeights();
-            foreach (var measureWeight in measureWeights)
-                if (measureWeight.SystemKeyword.ToLowerInvariant() == systemKeyword.ToLowerInvariant())
-                    return measureWeight;
-            return null;
+
+            return measureWeights
+                .Where(x => x.SystemKeyword.ToLowerInvariant() == systemKeyword.ToLowerInvariant())
+                .FirstOrDefault();
         }
 
         public virtual IList<MeasureWeight> GetAllMeasureWeights()
@@ -188,9 +176,6 @@ namespace SmartStore.Services.Directory
                 throw new ArgumentNullException("measure");
 
             _measureWeightRepository.Insert(measure);
-
-            //event notification
-            _eventPublisher.EntityInserted(measure);
         }
 
         public virtual void UpdateMeasureWeight(MeasureWeight measure)
@@ -199,13 +184,9 @@ namespace SmartStore.Services.Directory
                 throw new ArgumentNullException("measure");
 
             _measureWeightRepository.Update(measure);
-
-            //event notification
-            _eventPublisher.EntityUpdated(measure);
         }
 
-        public virtual decimal ConvertWeight(decimal quantity,
-            MeasureWeight sourceMeasureWeight, MeasureWeight targetMeasureWeight, bool round = true)
+        public virtual decimal ConvertWeight(decimal quantity, MeasureWeight sourceMeasureWeight, MeasureWeight targetMeasureWeight, bool round = true)
         {
             decimal result = quantity;
             if (result != decimal.Zero && sourceMeasureWeight.Id != targetMeasureWeight.Id)
@@ -213,8 +194,10 @@ namespace SmartStore.Services.Directory
                 result = ConvertToPrimaryMeasureWeight(result, sourceMeasureWeight);
                 result = ConvertFromPrimaryMeasureWeight(result, targetMeasureWeight);
             }
+
             if (round)
                 result = Math.Round(result, 2);
+
             return result;
         }
 
@@ -232,11 +215,11 @@ namespace SmartStore.Services.Directory
             return result;
         }
 
-        public virtual decimal ConvertFromPrimaryMeasureWeight(decimal quantity,
-            MeasureWeight targetMeasureWeight)
+        public virtual decimal ConvertFromPrimaryMeasureWeight(decimal quantity, MeasureWeight targetMeasureWeight)
         {
             decimal result = quantity;
             var baseWeightIn = GetMeasureWeightById(_measureSettings.BaseWeightId);
+
             if (result != decimal.Zero && targetMeasureWeight.Id != baseWeightIn.Id)
             {
                 decimal exchangeRatio = targetMeasureWeight.Ratio;
@@ -244,6 +227,7 @@ namespace SmartStore.Services.Directory
                     throw new SmartException(string.Format("Exchange ratio not set for weight [{0}]", targetMeasureWeight.Name));
                 result = result * exchangeRatio;
             }
+
             return result;
         }
 

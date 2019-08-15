@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Globalization;
 using System.Linq;
 using System.Web;
 using SmartStore.Collections;
@@ -11,12 +12,12 @@ using SmartStore.Services.Search.Modelling;
 
 namespace SmartStore.Services.Search.Extensions
 {
-	public class FacetUrlHelper
+    public class FacetUrlHelper
 	{
-		private readonly ICatalogSearchQueryAliasMapper _mapper;
-		private readonly IWorkContext _workContext;
+		private readonly ICatalogSearchQueryAliasMapper _catalogAliasMapper;
+        private readonly IForumSearchQueryAliasMapper _forumAliasMapper;
+        private readonly IWorkContext _workContext;
 		private readonly HttpRequestBase _httpRequest;
-		private readonly SearchSettings _searchSettings;
 
 		private readonly int _languageId;
 		private readonly string _url;
@@ -24,29 +25,36 @@ namespace SmartStore.Services.Search.Extensions
 
 		private readonly static IDictionary<FacetGroupKind, string> _queryNames = new Dictionary<FacetGroupKind, string>
 		{
+            // Catalog.
 			{ FacetGroupKind.Brand, "m" },
 			{ FacetGroupKind.Category, "c" },
-			{ FacetGroupKind.DeliveryTime, "d" },
-			{ FacetGroupKind.Stock, "sq" },
 			{ FacetGroupKind.Price, "p" },
-			{ FacetGroupKind.Rating, "r" }
-		};
+			{ FacetGroupKind.Rating, "r" },
+			{ FacetGroupKind.DeliveryTime, "d" },
+			{ FacetGroupKind.Availability, "a" },
+			{ FacetGroupKind.NewArrivals, "n" },
+            
+            // Forum.
+            { FacetGroupKind.Forum, "f" },
+            { FacetGroupKind.Customer, "c" },
+            { FacetGroupKind.Date, "d" }
+        };
 
 		public FacetUrlHelper(
-			ICatalogSearchQueryAliasMapper mapper,
-			IWorkContext workContext,
-			HttpRequestBase httpRequest,
-			SearchSettings searchSettings)
+			ICatalogSearchQueryAliasMapper catalogAliasMapper,
+            IForumSearchQueryAliasMapper forumAliasMapper,
+            IWorkContext workContext,
+			HttpRequestBase httpRequest)
 		{
-			_mapper = mapper;
+			_catalogAliasMapper = catalogAliasMapper;
+            _forumAliasMapper = forumAliasMapper;
 			_workContext = workContext;
 			_httpRequest = httpRequest;
-			_searchSettings = searchSettings;
 
 			_languageId = _workContext.WorkingLanguage.Id;
 			_url = _httpRequest.CurrentExecutionFilePath;
 			//_initialQuery = new QueryString().FillFromString(_httpRequest.QueryString.ToString(), false);
-			_initialQuery = QueryString.Current;
+			_initialQuery = QueryString.CurrentUnvalidated;
 
 			// Remove page index (i) from query string
 			_initialQuery.Remove("i");
@@ -104,16 +112,30 @@ namespace SmartStore.Services.Search.Extensions
 								break;
 							case FacetGroupKind.Category:
 							case FacetGroupKind.Brand:
+							case FacetGroupKind.Price:
 							case FacetGroupKind.Rating:
 							case FacetGroupKind.DeliveryTime:
-							case FacetGroupKind.Stock:
-							case FacetGroupKind.Price:
+							case FacetGroupKind.Availability:
+							case FacetGroupKind.NewArrivals:
+                            case FacetGroupKind.Forum:
+                            case FacetGroupKind.Customer:
+                            case FacetGroupKind.Date:
 								qsName = _queryNames[facet.FacetGroup.Kind];
 								break;
 						}
 					}
 
-					var currentValues = qs.Get(qsName)?.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToArray();
+					string[] currentValues = null;
+
+					// The query string value is not necessarily equal to the facet value.
+					// We must skip subsequent lines here to not add the removed value again and again.
+					if (facet.FacetGroup.Kind != FacetGroupKind.Price &&
+						facet.FacetGroup.Kind != FacetGroupKind.Availability &&
+						facet.FacetGroup.Kind != FacetGroupKind.NewArrivals)
+					{
+						currentValues = qs.Get(qsName)?.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToArray();
+					}
+
 					qs.Remove(qsName);
 
 					if (currentValues != null)
@@ -131,6 +153,12 @@ namespace SmartStore.Services.Search.Extensions
 			return _url + qs.ToString(false);
 		}
 
+		public string GetQueryName(Facet facet)
+		{
+			var parts = GetQueryParts(facet);
+			return parts.GetKey(0);
+		}
+
 		protected virtual NameValueCollection GetQueryParts(Facet facet)
 		{
 			string name = null;
@@ -145,32 +173,50 @@ namespace SmartStore.Services.Search.Extensions
 			switch (group.Kind)
 			{
 				case FacetGroupKind.Attribute:
-					// TODO: (mc) > (mg) Handle range type attributes also!
-					entityId = val.Value.Convert<int>();
-					name = _mapper.GetAttributeAliasById(val.ParentId, _languageId) ?? "attr" + val.ParentId;
-					value = _mapper.GetAttributeOptionAliasById(entityId, _languageId) ?? "opt" + entityId;
+					if (facet.Value.TypeCode == IndexTypeCode.Double)
+					{
+						value = "{0}~{1}".FormatInvariant(
+							val.Value != null ? ((double)val.Value).ToString(CultureInfo.InvariantCulture) : "",
+							val.UpperValue != null ? ((double)val.UpperValue).ToString(CultureInfo.InvariantCulture) : "");
+					}
+					else
+					{
+						entityId = val.Value.Convert<int>();
+						value = _catalogAliasMapper.GetAttributeOptionAliasById(entityId, _languageId) ?? "opt" + entityId;
+					}
+					name = _catalogAliasMapper.GetAttributeAliasById(val.ParentId, _languageId) ?? "attr" + val.ParentId;
 					result.Add(name, value);
 					break;
 				case FacetGroupKind.Variant:
 					entityId = val.Value.Convert<int>();
-					name = _mapper.GetVariantAliasById(val.ParentId, _languageId) ?? "vari" + val.ParentId;
-					value = _mapper.GetVariantOptionAliasById(entityId, _languageId) ?? "opt" + entityId;
+					name = _catalogAliasMapper.GetVariantAliasById(val.ParentId, _languageId) ?? "vari" + val.ParentId;
+					value = _catalogAliasMapper.GetVariantOptionAliasById(entityId, _languageId) ?? "opt" + entityId;
 					result.Add(name, value);
 					break;
 				case FacetGroupKind.Category:
 				case FacetGroupKind.Brand:
+				case FacetGroupKind.Price:
 				case FacetGroupKind.Rating:
 				case FacetGroupKind.DeliveryTime:
-				case FacetGroupKind.Stock:
-				case FacetGroupKind.Price:
+				case FacetGroupKind.Availability:
+				case FacetGroupKind.NewArrivals:
 					value = val.ToString();
 					if (value.HasValue())
 					{
-						name = _mapper.GetCommonFacetAliasByGroupKind(group.Kind, _languageId) ?? _queryNames[group.Kind];
+						name = _catalogAliasMapper.GetCommonFacetAliasByGroupKind(group.Kind, _languageId) ?? _queryNames[group.Kind];
 						result.Add(name, value);
 					}
-
 					break;
+                case FacetGroupKind.Forum:
+                case FacetGroupKind.Customer:
+                case FacetGroupKind.Date:
+                    value = val.ToString();
+                    if (value.HasValue())
+                    {
+                        name = _forumAliasMapper.GetCommonFacetAliasByGroupKind(group.Kind, _languageId) ?? _queryNames[group.Kind];
+                        result.Add(name, value);
+                    }
+                    break;
 			}
 
 			return result;

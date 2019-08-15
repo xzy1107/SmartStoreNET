@@ -9,6 +9,7 @@ namespace SmartStore.Core.Search.Facets
 	{
 		HitsDesc,
 		ValueAsc,
+		LabelAsc,
 		DisplayOrder
 	}
 
@@ -26,30 +27,6 @@ namespace SmartStore.Core.Search.Facets
 
 			_values = new List<FacetValue>();
 			Key = key;
-		}
-
-		/// <summary>
-		/// Gets the string resource key for a facet group kind
-		/// </summary>
-		/// <param name="kind">Facet group kind</param>
-		/// <returns>Resource key</returns>
-		public static string GetLabelResourceKey(FacetGroupKind kind)
-		{
-			switch (kind)
-			{
-				case FacetGroupKind.Category:
-					return "Search.Facet.Category";
-				case FacetGroupKind.Brand:
-					return "Search.Facet.Manufacturer";
-				case FacetGroupKind.Price:
-					return "Search.Facet.Price";
-				case FacetGroupKind.Rating:
-					return "Search.Facet.Rating";
-				case FacetGroupKind.DeliveryTime:
-					return "Search.Facet.DeliveryTime";
-				default:
-					return null;
-			}
 		}
 
 		/// <summary>

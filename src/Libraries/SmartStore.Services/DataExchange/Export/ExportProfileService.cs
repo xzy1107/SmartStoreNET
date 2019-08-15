@@ -6,6 +6,7 @@ using SmartStore.Core.Data;
 using SmartStore.Core.Domain;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.DataExchange;
+using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Tasks;
 using SmartStore.Core.Events;
 using SmartStore.Core.Plugins;
@@ -56,15 +57,17 @@ namespace SmartStore.Services.DataExchange.Export
 		{
 			Guard.NotEmpty(providerSystemName, nameof(providerSystemName));
 
-			var profileCount = _exportProfileRepository.Table.Count(x => x.ProviderSystemName == providerSystemName);
-
 			if (name.IsEmpty())
+			{
 				name = providerSystemName;
+			}
 
 			if (!isSystemProfile)
-				name = string.Concat(_localizationService.GetResource("Common.My"), " ", name);
+			{
+				var profileCount = _exportProfileRepository.Table.Count(x => x.ProviderSystemName == providerSystemName);
 
-			name = string.Concat(name, " ", profileCount + 1);
+				name = string.Concat(_localizationService.GetResource("Common.My"), " ", name, " ", profileCount + 1);
+			}
 
 			var cloneProfile = GetExportProfileById(cloneFromProfileId);
 
@@ -75,7 +78,7 @@ namespace SmartStore.Services.DataExchange.Export
 			{
 				task = new ScheduleTask
 				{
-					CronExpression = "0 */6 * * *",     // every six hours
+					CronExpression = "0 */6 * * *",     // Every six hours.
 					Type = typeof(DataExportTask).AssemblyQualifiedNameWithoutVersion(),
 					Enabled = false,
 					StopOnError = false,
@@ -85,7 +88,6 @@ namespace SmartStore.Services.DataExchange.Export
 			else
 			{
 				task = cloneProfile.ScheduleTask.Clone();
-				task.LastEndUtc = task.LastStartUtc = task.LastSuccessUtc = null;
 			}
 
 			task.Name = string.Concat(name, " Task");
@@ -108,21 +110,22 @@ namespace SmartStore.Services.DataExchange.Export
 				}
 				else
 				{
-					// what we do here is to preset typical settings for feed creation
-					// but on the other hand they may be untypical for generic data export\exchange
+					// What we do here is to preset typical settings for feed creation
+					// but on the other hand they may be untypical for generic data export\exchange.
 					var projection = new ExportProjection
 					{
 						RemoveCriticalCharacters = true,
 						CriticalCharacters = "¼,½,¾",
 						PriceType = PriceDisplayType.PreSelectedPrice,
-						NoGroupedProducts = (features.HasFlag(ExportFeatures.CanOmitGroupedProducts) ? true : false),
+						NoGroupedProducts = features.HasFlag(ExportFeatures.CanOmitGroupedProducts) ? true : false,
 						OnlyIndividuallyVisibleAssociated = true,
 						DescriptionMerging = ExportDescriptionMerging.Description
 					};
 
 					var filter = new ExportFilter
 					{
-						IsPublished = true
+						IsPublished = true,
+						ShoppingCartTypeId = (int)ShoppingCartType.ShoppingCart
 					};
 
 					profile.Projection = XmlHelper.Serialize<ExportProjection>(projection);
@@ -145,17 +148,16 @@ namespace SmartStore.Services.DataExchange.Export
 				.Replace("/", "")
 				.Replace("-", "");
 
-			var folderName = SeoHelper.GetSeName(cleanedSystemName, true, false)
+			var folderName = SeoHelper.GetSeName(cleanedSystemName, true, false, false)
 				.ToValidPath()
 				.Truncate(_dataExchangeSettings.MaxFileNameLength);
 
 			var path = DataSettings.Current.TenantPath + "/ExportProfiles";
 			profile.FolderName = path + "/" + FileSystemHelper.CreateNonExistingDirectoryName(CommonHelper.MapPath(path), folderName);
 
-			if (profileSystemName.IsEmpty() && isSystemProfile)
-				profile.SystemName = cleanedSystemName;
-			else
-				profile.SystemName = profileSystemName;
+			profile.SystemName = profileSystemName.IsEmpty() && isSystemProfile
+				? cleanedSystemName
+				: profileSystemName;
 
 			_exportProfileRepository.Insert(profile);
 
@@ -194,8 +196,6 @@ namespace SmartStore.Services.DataExchange.Export
 				}
 			}
 
-			_eventPublisher.EntityInserted(profile);
-
 			return profile;
 		}
 
@@ -221,20 +221,21 @@ namespace SmartStore.Services.DataExchange.Export
 
 		public virtual void UpdateExportProfile(ExportProfile profile)
 		{
-			if (profile == null)
-				throw new ArgumentNullException("profile");
+			Guard.NotNull(profile, nameof(profile));
 
-			profile.FolderName = FileSystemHelper.ValidateRootPath(profile.FolderName);
+			profile.FolderName = PathHelper.NormalizeAppRelativePath(profile.FolderName);
+
+            if (!PathHelper.IsSafeAppRootPath(profile.FolderName))
+            {
+                throw new SmartException(_localizationService.GetResource("Admin.DataExchange.Export.FolderName.Validate"));
+            }
 
 			_exportProfileRepository.Update(profile);
-
-			_eventPublisher.EntityUpdated(profile);
 		}
 
 		public virtual void DeleteExportProfile(ExportProfile profile, bool force = false)
 		{
-			if (profile == null)
-				throw new ArgumentNullException("profile");
+			Guard.NotNull(profile, nameof(profile));
 
 			if (!force && profile.IsSystemProfile)
 				throw new SmartException(_localizationService.GetResource("Admin.DataExchange.Export.CannotDeleteSystemProfile"));
@@ -242,12 +243,17 @@ namespace SmartStore.Services.DataExchange.Export
 			int scheduleTaskId = profile.SchedulingTaskId;
 			var folder = profile.GetExportFolder();
 
-			_exportProfileRepository.Delete(profile);
+            var deployments = profile.Deployments.Where(x => !x.IsTransientRecord()).ToList();
+            if (deployments.Any())
+            {
+                _exportDeploymentRepository.DeleteRange(deployments);
+                _exportDeploymentRepository.Context.SaveChanges();
+            }
+
+            _exportProfileRepository.Delete(profile);
 
 			var scheduleTask = _scheduleTaskService.GetTaskById(scheduleTaskId);
 			_scheduleTaskService.DeleteTask(scheduleTask);
-
-			_eventPublisher.EntityDeleted(profile);
 
 			if (System.IO.Directory.Exists(folder))
 			{
@@ -349,9 +355,12 @@ namespace SmartStore.Services.DataExchange.Export
 			if (deployment == null)
 				throw new ArgumentNullException("deployment");
 
-			_exportDeploymentRepository.Update(deployment);
+			if (deployment.DeploymentType == ExportDeploymentType.FileSystem && deployment.FileSystemPath == "~/")
+			{
+				throw new SmartException("Invalid deployment path.");
+			}
 
-			_eventPublisher.EntityUpdated(deployment);
+			_exportDeploymentRepository.Update(deployment);
 		}
 
 		public virtual void DeleteExportDeployment(ExportDeployment deployment)
@@ -360,8 +369,6 @@ namespace SmartStore.Services.DataExchange.Export
 				throw new ArgumentNullException("deployment");
 
 			_exportDeploymentRepository.Delete(deployment);
-
-			_eventPublisher.EntityDeleted(deployment);
 		}
 	}
 }

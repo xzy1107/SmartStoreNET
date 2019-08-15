@@ -10,6 +10,7 @@ using SmartStore.Services.Catalog;
 using SmartStore.Services.Media;
 using SmartStore.Services.Orders;
 using SmartStore.Web.Framework.Controllers;
+using System.Linq;
 
 namespace SmartStore.Web.Controllers
 {
@@ -39,8 +40,11 @@ namespace SmartStore.Web.Controllers
 		private ActionResult GetFileContentResultFor(Download download, Product product, byte[] data)
 		{
 			if (data == null || data.LongLength == 0)
-				return Content(T("Common.Download.NoDataAvailable"));
-
+            {
+                NotifyError(T("Common.Download.NoDataAvailable"));   
+                return new RedirectResult(Url.Action("Info", "Customer"));
+            }
+            
 			var fileName = (download.Filename.HasValue() ? download.Filename : download.Id.ToString());
 			var contentType = (download.ContentType.HasValue() ? download.ContentType : "application/octet-stream");
 
@@ -54,20 +58,25 @@ namespace SmartStore.Web.Controllers
 		{
 			return GetFileContentResultFor(download, product, _downloadService.LoadDownloadBinary(download));
 		}
-
-
-		public ActionResult Sample(int id /* productId */)
+        
+		public ActionResult Sample(int productId)
         {
-            var product = _productService.GetProductById(id);
+            var product = _productService.GetProductById(productId);
             if (product == null)
 				return HttpNotFound();
 
 			if (!product.HasSampleDownload)
-				return Content(T("Common.Download.HasNoSample"));
-
+            {
+                NotifyError(T("Common.Download.HasNoSample"));
+                return RedirectToAction("ProductDetails", "Product", new { productId = productId });
+            }
+            
 			var download = _downloadService.GetDownloadById(product.SampleDownloadId.GetValueOrDefault());
             if (download == null)
-                return Content(T("Common.Download.SampleNotAvailable"));
+            {
+                NotifyError(T("Common.Download.SampleNotAvailable"));
+                return RedirectToAction("ProductDetails", "Product", new { productId = productId });
+            }
 
             if (download.UseDownloadUrl)
                 return new RedirectResult(download.DownloadUrl);
@@ -75,7 +84,7 @@ namespace SmartStore.Web.Controllers
 			return GetFileContentResultFor(download, product);
         }
 
-		public ActionResult GetDownload(Guid id /* orderItemId */, bool agree = false)
+		public ActionResult GetDownload(Guid id, bool agree = false, string fileVersion = "")
         {
 			if (id == Guid.Empty)
 				return HttpNotFound();
@@ -86,27 +95,58 @@ namespace SmartStore.Web.Controllers
 
             var order = orderItem.Order;
             var product = orderItem.Product;
-            if (!_downloadService.IsDownloadAllowed(orderItem))
-                return Content(T("Common.Download.NotAllowed"));
+            var hasNotification = false;
 
+            if (!_downloadService.IsDownloadAllowed(orderItem))
+            {
+                hasNotification = true;
+                NotifyError(T("Common.Download.NotAllowed"));
+            }
+            
             if (_customerSettings.DownloadableProductsValidateUser)
             {
                 if (_workContext.CurrentCustomer == null)
                     return new HttpUnauthorizedResult();
 
                 if (order.CustomerId != _workContext.CurrentCustomer.Id)
-                    return Content(T("Account.CustomerOrders.NotYourOrder"));
+                {
+                    hasNotification = true;
+                    NotifyError(T("Account.CustomerOrders.NotYourOrder"));
+                }
             }
 
-            var download = _downloadService.GetDownloadById(product.DownloadId);
+			Download download;
+
+            if (fileVersion.HasValue())
+            {
+                download = _downloadService.GetDownloadByVersion(product.Id, "Product", fileVersion);
+            }
+			else
+			{
+				download = _downloadService.GetDownloadsFor(product).FirstOrDefault();
+			}
+
             if (download == null)
-				return Content(T("Common.Download.NoDataAvailable"));
+            {
+                hasNotification = true;
+                NotifyError(T("Common.Download.NoDataAvailable"));
+            }
 
 			if (product.HasUserAgreement && !agree)
-				return RedirectToAction("UserAgreement", "Customer", new { id = id });
+            {
+                hasNotification = true;
+            }
 
             if (!product.UnlimitedDownloads && orderItem.DownloadCount >= product.MaxNumberOfDownloads)
-                return Content(T("Common.Download.MaxNumberReached", product.MaxNumberOfDownloads));
+            {
+                hasNotification = true;
+                NotifyError(T("Common.Download.MaxNumberReached", product.MaxNumberOfDownloads));
+            }
+            
+            if (hasNotification)
+            {
+                return RedirectToAction("UserAgreement", "Customer", new { id, fileVersion });
+            }
             
             if (download.UseDownloadUrl)
             {
@@ -120,8 +160,11 @@ namespace SmartStore.Web.Controllers
 				var data = _downloadService.LoadDownloadBinary(download);
 
 				if (data == null || data.LongLength == 0)
-                    return Content(T("Common.Download.NoDataAvailable"));
-
+                {
+                    NotifyError(T("Common.Download.NoDataAvailable"));
+                    return RedirectToAction("UserAgreement", "Customer", new { id = id });
+                }
+                
                 orderItem.DownloadCount++;
                 _orderService.UpdateOrder(order);
 
@@ -129,7 +172,7 @@ namespace SmartStore.Web.Controllers
             }
         }
 
-		public ActionResult GetLicense(Guid id /* orderItemId */)
+		public ActionResult GetLicense(Guid id)
         {
 			if (id == Guid.Empty)
 				return HttpNotFound();
@@ -142,7 +185,11 @@ namespace SmartStore.Web.Controllers
             var product = orderItem.Product;
 
             if (!_downloadService.IsLicenseDownloadAllowed(orderItem))
-                return Content(T("Common.Download.NotAllowed"));
+            {
+                NotifyError(T("Common.Download.NotAllowed"));
+                return RedirectToAction("DownloadableProducts", "Customer");
+            }
+                
 
             if (_customerSettings.DownloadableProductsValidateUser)
             {
@@ -150,12 +197,18 @@ namespace SmartStore.Web.Controllers
                     return new HttpUnauthorizedResult();
 
                 if (order.CustomerId != _workContext.CurrentCustomer.Id)
-                    return Content(T("Account.CustomerOrders.NotYourOrder"));
+                {
+                    NotifyError(T("Account.CustomerOrders.NotYourOrder"));
+                    return RedirectToAction("DownloadableProducts", "Customer");
+                }
             }
 
             var download = _downloadService.GetDownloadById(orderItem.LicenseDownloadId.HasValue ? orderItem.LicenseDownloadId.Value : 0);
             if (download == null)
-                return Content(T("Common.Download.NotAvailable"));
+            {
+                NotifyError(T("Common.Download.NotAvailable"));
+                return RedirectToAction("DownloadableProducts", "Customer");
+            }
             
             if (download.UseDownloadUrl)
                 return new RedirectResult(download.DownloadUrl);
@@ -167,7 +220,10 @@ namespace SmartStore.Web.Controllers
         {
             var download = _downloadService.GetDownloadByGuid(downloadId);
             if (download == null)
-                return Content(T("Common.Download.NotAvailable"));
+            {
+                NotifyError(T("Common.Download.NotAvailable"));
+                return RedirectToAction("DownloadableProducts", "Customer");
+            }
 
             if (download.UseDownloadUrl)
                 return new RedirectResult(download.DownloadUrl);

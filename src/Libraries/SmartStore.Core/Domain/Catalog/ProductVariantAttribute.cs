@@ -42,6 +42,7 @@ namespace SmartStore.Core.Domain.Catalog
         /// Gets or sets the attribute control type identifier
         /// </summary>
 		[DataMember]
+		[Index]
 		public int AttributeControlTypeId { get; set; }
 
         /// <summary>
@@ -72,7 +73,7 @@ namespace SmartStore.Core.Domain.Catalog
 			switch (AttributeControlType)
 			{
 				case AttributeControlType.Checkboxes:
-				case AttributeControlType.ColorSquares:
+				case AttributeControlType.Boxes:
 				case AttributeControlType.DropdownList:
 				case AttributeControlType.RadioList:
 					return true;

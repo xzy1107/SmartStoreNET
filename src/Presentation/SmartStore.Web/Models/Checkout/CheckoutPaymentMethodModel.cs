@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using SmartStore.Web.Framework.Modelling;
+using SmartStore.Services.Localization;
 
 namespace SmartStore.Web.Models.Checkout
 {
@@ -12,10 +13,6 @@ namespace SmartStore.Web.Models.Checkout
 
         public List<PaymentMethodModel> PaymentMethods { get; set; }
 
-        public bool DisplayRewardPoints { get; set; }
-        public int RewardPointsBalance { get; set; }
-        public string RewardPointsAmount { get; set; }
-        public bool UseRewardPoints { get; set; }
         public bool SkippedSelectShipping { get; set; }
 
         #region Nested classes
@@ -25,7 +22,7 @@ namespace SmartStore.Web.Models.Checkout
             public string PaymentMethodSystemName { get; set; }
             public string Name { get; set; }
 			public string Description { get; set; }
-			public string FullDescription { get; set; }
+			public LocalizedValue<string> FullDescription { get; set; }
             public string BrandUrl { get; set; }
             public string Fee { get; set; }
             public bool Selected { get; set; }

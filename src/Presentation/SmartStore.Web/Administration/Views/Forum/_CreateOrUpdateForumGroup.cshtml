@@ -1,16 +1,15 @@
-﻿@model ForumGroupModel
-
-@using Telerik.Web.Mvc.UI;
+﻿@using Telerik.Web.Mvc.UI;
+@model ForumGroupModel
 
 @Html.ValidationSummary(true)
 @Html.HiddenFor(model => model.Id)
 
-@Html.SmartStore().TabStrip().Name("forumgroup-edit").Items(x =>
+@Html.SmartStore().TabStrip().Name("forumgroup-edit").Style(TabsStyle.Material).Items(x =>
 {
 	x.Add().Text(T("Admin.Common.General").Text).Content(TabInfo()).Selected(true);
+    x.Add().Text(T("Admin.Catalog.Categories.Acl").Text).Content(TabAcl());
 	x.Add().Text(T("Admin.Common.Stores").Text).Content(TabStores());
 
-	//generate an event
 	EngineContext.Current.Resolve<IEventPublisher>().Publish(new TabStripCreated(x, "forumgroup-edit", this.Html, this.Model));
 })
 
@@ -23,6 +22,9 @@
 				@Html.SmartLabelFor(model => model.Locales[item].Name)
 			</td>
 			<td class="adminData">
+				@*IMPORTANT: Do not delete, this hidden element contains the id to assign localized values to the corresponding language *@
+				@Html.HiddenFor(model => model.Locales[item].LanguageId)
+
 				@Html.EditorFor(model => Model.Locales[item].Name)
 				@Html.ValidationMessageFor(model => model.Locales[item].Name)
 			</td>
@@ -41,13 +43,8 @@
 				@Html.SmartLabelFor(model => model.Locales[item].Description)
 			</td>
 			<td class="adminData">
-				@Html.TextAreaFor(model => model.Locales[item].Description, new { @class = "input-large" })
+				@Html.TextAreaFor(model => model.Locales[item].Description)
 				@Html.ValidationMessageFor(model => model.Locales[item].Description)
-			</td>
-		</tr>
-		<tr>
-			<td colspan="2">
-				@Html.HiddenFor(model => model.Locales[item].LanguageId)
 			</td>
 		</tr>
 	</table>
@@ -70,7 +67,7 @@
                 @Html.EditorFor(x => x.SeName)
 				@if (Model.Id != 0)
                 {
-                    @Html.Action("NamesPerEntity", "UrlRecord", new { entityName = "NewsItem", entityId = @Model.Id })
+                    @Html.Action("NamesPerEntity", "UrlRecord", new { entityName = "ForumGroup", entityId = Model.Id })
                 }
                 @Html.ValidationMessageFor(model => model.SeName)
             </td>
@@ -80,7 +77,7 @@
 				@Html.SmartLabelFor(model => model.Description)
 			</td>
 			<td class="adminData">
-				@Html.TextAreaFor(model => model.Description, new { @class = "input-large" })
+				@Html.TextAreaFor(model => model.Description)
 				@Html.ValidationMessageFor(model => model.Description)
 			</td>
 		</tr>
@@ -100,46 +97,12 @@
 	</table>
 }
 
+@helper TabAcl()
+{
+	@Html.Partial("AclSelector", Model)
+}
+
 @helper TabStores()
 {
-	<script type="text/javascript">
-		$(document).ready(function () {
-			$('#@Html.FieldIdFor(model => model.LimitedToStores)').change(function () {
-				$('#pnl-available-stores').toggle($(this).is(':checked'));
-			}).trigger('change');
-		});
-	</script>
-
-	<table class="adminContent">
-		<tr>
-			<td class="adminTitle">
-				@Html.SmartLabelFor(model => model.LimitedToStores)
-			</td>
-			<td class="adminData">
-				@Html.EditorFor(model => model.LimitedToStores)
-				@Html.ValidationMessageFor(model => model.LimitedToStores)
-			</td>
-		</tr>
-		<tr id="pnl-available-stores">
-			<td class="adminTitle">
-				@Html.SmartLabelFor(model => model.AvailableStores)
-			</td>
-			<td class="adminData">
-				@if (Model.AvailableStores != null && Model.AvailableStores.Count > 0)
-				{
-					foreach (var store in Model.AvailableStores)
-					{
-						<label class="checkbox">
-							<input type="checkbox" name="SelectedStoreIds" value="@store.Id" checked="@(Model.SelectedStoreIds != null && Model.SelectedStoreIds.Contains(store.Id))" />
-							<span>@store.Name</span>
-						</label>
-					}
-				}
-				else
-				{
-					<div>@T("Admin.Configuration.Stores.NoStoresDefined")</div>
-				}
-			</td>
-		</tr>
-	</table>
+	@Html.Partial("StoreSelector", Model)
 }

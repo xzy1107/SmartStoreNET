@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -8,19 +9,20 @@ using System.Net.Http.Headers;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
+using System.Text;
 using System.Threading.Tasks;
+using System.Web;
+using System.Web.Hosting;
 using System.Web.Mvc;
 using Newtonsoft.Json;
 using SmartStore.Admin.Models.Common;
-using SmartStore.Collections;
+using SmartStore.ComponentModel;
 using SmartStore.Core;
 using SmartStore.Core.Async;
-using SmartStore.Core.Caching;
 using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Common;
 using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Directory;
-using SmartStore.Core.Domain.Security;
 using SmartStore.Core.Infrastructure;
 using SmartStore.Core.Logging;
 using SmartStore.Core.Packaging;
@@ -48,10 +50,12 @@ using Telerik.Web.Mvc;
 
 namespace SmartStore.Admin.Controllers
 {
-    [AdminAuthorize]
+	[AdminAuthorize]
     public class CommonController : AdminControllerBase
     {
-        private readonly Lazy<IPaymentService> _paymentService;
+		const string CHECKUPDATE_CACHEKEY_PREFIX = "admin:common:checkupdateresult";
+
+		private readonly Lazy<IPaymentService> _paymentService;
         private readonly Lazy<IShippingService> _shippingService;
         private readonly Lazy<ICurrencyService> _currencyService;
         private readonly Lazy<IMeasureService> _measureService;
@@ -63,16 +67,12 @@ namespace SmartStore.Admin.Controllers
         private readonly ILanguageService _languageService;
         private readonly ILocalizationService _localizationService;
         private readonly Lazy<IImageCache> _imageCache;
-        private readonly Lazy<SecuritySettings> _securitySettings;
-		private readonly Lazy<IMenuPublisher> _menuPublisher;
-        private readonly Lazy<IPluginFinder> _pluginFinder;
 		private readonly Lazy<IImportProfileService> _importProfileService;
+		private readonly Lazy<IIconExplorer> _iconExplorer;
 		private readonly IGenericAttributeService _genericAttributeService;
 		private readonly IDbCache _dbCache;
 		private readonly ITaskScheduler _taskScheduler;
 		private readonly ICommonServices _services;
-
-		private readonly static object s_lock = new object();
 
         public CommonController(
 			Lazy<IPaymentService> paymentService,
@@ -87,186 +87,53 @@ namespace SmartStore.Admin.Controllers
             ILanguageService languageService,
 			ILocalizationService localizationService,
             Lazy<IImageCache> imageCache,
-			Lazy<SecuritySettings> securitySettings,
-			Lazy<IMenuPublisher> menuPublisher,
-            Lazy<IPluginFinder> pluginFinder,
 			Lazy<IImportProfileService> importProfileService,
+			Lazy<IIconExplorer> iconExplorer,
 			IGenericAttributeService genericAttributeService,
 			IDbCache dbCache,
 			ITaskScheduler taskScheduler,
 			ICommonServices services)
         {
-            this._paymentService = paymentService;
-            this._shippingService = shippingService;
-            this._currencyService = currencyService;
-            this._measureService = measureService;
-            this._customerService = customerService;
-			this._commonSettings = commonSettings;
-            this._currencySettings = currencySettings;
-            this._measureSettings = measureSettings;
-            this._dateTimeHelper = dateTimeHelper;
-            this._languageService = languageService;
-            this._localizationService = localizationService;
-            this._imageCache = imageCache;
-            this._securitySettings = securitySettings;
-            this._menuPublisher = menuPublisher;
-			this._pluginFinder = pluginFinder;
-			this._importProfileService = importProfileService;
-            this._genericAttributeService = genericAttributeService;
-			this._dbCache = dbCache;
-			this._taskScheduler = taskScheduler;
-			this._services = services;
+            _paymentService = paymentService;
+            _shippingService = shippingService;
+            _currencyService = currencyService;
+            _measureService = measureService;
+            _customerService = customerService;
+			_commonSettings = commonSettings;
+            _currencySettings = currencySettings;
+            _measureSettings = measureSettings;
+            _dateTimeHelper = dateTimeHelper;
+            _languageService = languageService;
+            _localizationService = localizationService;
+            _imageCache = imageCache;
+			_importProfileService = importProfileService;
+			_iconExplorer = iconExplorer;
+            _genericAttributeService = genericAttributeService;
+			_dbCache = dbCache;
+			_taskScheduler = taskScheduler;
+			_services = services;
         }
-
-        #region Navbar & Menu
 
 		[ChildActionOnly]
 		public ActionResult Navbar()
 		{
 			var currentCustomer = _services.WorkContext.CurrentCustomer;
 
-			ViewBag.UserName = _services.Settings.LoadSetting<CustomerSettings>().UsernamesEnabled ? currentCustomer.Username : currentCustomer.Email;
+			ViewBag.UserName = _services.Settings.LoadSetting<CustomerSettings>().CustomerLoginType != CustomerLoginType.Email ? currentCustomer.Username : currentCustomer.Email;
 			ViewBag.Stores = _services.StoreService.GetAllStores();
 			if (_services.Permissions.Authorize(StandardPermissionProvider.ManageMaintenance))
 			{
-				ViewBag.CheckUpdateResult = CheckUpdateInternal(false);
+				ViewBag.CheckUpdateResult = AsyncRunner.RunSync(() => CheckUpdateInternalAsync(false));
 			}
 
 			return PartialView();
 		}
 
-        [ChildActionOnly]
-        public ActionResult Menu()
-        {
-			var cacheManager = _services.Cache;
-
-			var customerRolesIds = _services.WorkContext.CurrentCustomer.CustomerRoles.Where(x => x.Active).Select(x => x.Id).ToList();
-			string cacheKey = string.Format("pres:adminmenu:navigation-{0}-{1}", _services.WorkContext.WorkingLanguage.Id, string.Join(",", customerRolesIds));
-
-            var rootNode = cacheManager.Get(cacheKey, () =>
-            {
-				lock (s_lock) {
-					return PrepareAdminMenu();
-				}
-            });
-
-            return PartialView(rootNode);
-        }
-
-        private TreeNode<MenuItem> PrepareAdminMenu()
-        {
-            XmlSiteMap siteMap = new XmlSiteMap();
-			siteMap.LoadFrom("~/Administration/sitemap.config");
-            
-            var rootNode = ConvertSitemapNodeToMenuItemNode(siteMap.RootNode);
-
-			_menuPublisher.Value.RegisterMenus(rootNode, "admin");
-
-			// hide based on permissions
-            rootNode.Traverse(x => {
-                if (!x.IsRoot)
-                {
-					if (!MenuItemAccessPermitted(x.Value))
-                    {
-                        x.Value.Visible = false;
-                    }
-                }
-            });
-
-            // hide dropdown nodes when no child is visible
-			rootNode.Traverse(x =>
-			{
-				if (!x.IsRoot)
-				{
-					var item = x.Value;
-					if (!item.IsGroupHeader && !item.HasRoute())
-					{
-						if (!x.Children.Any(child => child.Value.Visible))
-						{
-							item.Visible = false;
-						}
-					}
-				}
-			});
-
-            return rootNode;
-        }
-
-        private TreeNode<MenuItem> ConvertSitemapNodeToMenuItemNode(SiteMapNode node)
-        {
-            var item = new MenuItem();
-            var treeNode = new TreeNode<MenuItem>(item);
-
-            if (node.RouteName.HasValue())
-            {
-                item.RouteName = node.RouteName;
-            }
-            else if (node.ActionName.HasValue() && node.ControllerName.HasValue())
-            {
-                item.ActionName = node.ActionName;
-                item.ControllerName = node.ControllerName;
-            }
-            else if (node.Url.HasValue())
-            {
-                item.Url = node.Url;
-            }
-            item.RouteValues = node.RouteValues;
-            
-            item.Visible = node.Visible;
-            item.Text = node.Title;
-            item.Attributes.Merge(node.Attributes);
-
-            if (node.Attributes.ContainsKey("permissionNames"))
-                item.PermissionNames = node.Attributes["permissionNames"] as string;
-
-            if (node.Attributes.ContainsKey("id"))
-                item.Id = node.Attributes["id"] as string;
-
-            if (node.Attributes.ContainsKey("resKey"))
-                item.ResKey = node.Attributes["resKey"] as string;
-
-			if (node.Attributes.ContainsKey("iconClass"))
-				item.Icon = node.Attributes["iconClass"] as string;
-
-            if (node.Attributes.ContainsKey("imageUrl"))
-                item.ImageUrl = node.Attributes["imageUrl"] as string;
-
-            if (node.Attributes.ContainsKey("isGroupHeader"))
-                item.IsGroupHeader = Boolean.Parse(node.Attributes["isGroupHeader"] as string);
-
-            // iterate children recursively
-            foreach (var childNode in node.ChildNodes)
-            {
-                var childTreeNode = ConvertSitemapNodeToMenuItemNode(childNode);
-                treeNode.Append(childTreeNode);
-            }
-            
-            return treeNode;
-        }
-
-        private bool MenuItemAccessPermitted(MenuItem item)
-        {
-            var result = true;
-
-			if (_securitySettings.Value.HideAdminMenuItemsBasedOnPermissions && item.PermissionNames.HasValue())
-            {
-				var permitted = item.PermissionNames.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Any(x => _services.Permissions.Authorize(x.Trim()));
-                if (!permitted)
-                {
-                    result = false;
-                }
-            }
-
-            return result;
-        }
-
-		#endregion
-
 		#region CheckUpdate
 
-		public ActionResult CheckUpdate(bool enforce = false)
+		public async Task<ActionResult> CheckUpdate(bool enforce = false)
 		{
-			var model = CheckUpdateInternal(enforce);
+			var model = await CheckUpdateInternalAsync(enforce);
 			return View(model);
 		}
 
@@ -276,33 +143,31 @@ namespace SmartStore.Admin.Controllers
 			return RedirectToAction("Index", "Home");
 		}
 
-		public void CheckUpdateSuppressInternal(string myVersion, string newVersion)
+		private void CheckUpdateSuppressInternal(string myVersion, string newVersion)
 		{
 			var suppressKey = "SuppressUpdateMessage.{0}.{1}".FormatInvariant(myVersion, newVersion);
 			_genericAttributeService.SaveAttribute<bool?>(_services.WorkContext.CurrentCustomer, suppressKey, true);
-			_services.Cache.RemoveByPattern("Common.CheckUpdateResult");
+			_services.Cache.RemoveByPattern(CHECKUPDATE_CACHEKEY_PREFIX + "*");
 		}
 
-		[NonAction]
-		private CheckUpdateResult CheckUpdateInternal(bool enforce = false, bool forSuppress = false)
+		private async Task<CheckUpdateResult> CheckUpdateInternalAsync(bool enforce = false, bool forSuppress = false)
 		{
 			var curVersion = SmartStoreVersion.CurrentFullVersion;
 			var lang = _services.WorkContext.WorkingLanguage.UniqueSeoCode;
-			var cacheKeyPattern = "admin:common:checkupdateresult";
-			var cacheKey = "{0}-{1}".FormatInvariant(cacheKeyPattern, lang);
+			var cacheKey = "{0}-{1}".FormatInvariant(CHECKUPDATE_CACHEKEY_PREFIX, lang);
 
 			if (enforce)
 			{
-				_services.Cache.RemoveByPattern(cacheKeyPattern);
+				_services.Cache.RemoveByPattern(CHECKUPDATE_CACHEKEY_PREFIX + "*");
 			}
 
-			var execute = new Func<CheckUpdateResult>(() => 
+			var result = await _services.Cache.GetAsync(cacheKey, async () => 
 			{
 				var noUpdateResult = new CheckUpdateResult { UpdateAvailable = false, LanguageCode = lang, CurrentVersion = curVersion };
 
 				try
 				{
-					string url = "http://dlm.smartstore.com/api/v1/apprelease/CheckUpdate?app=SMNET&version={0}&language={1}".FormatInvariant(curVersion, lang);
+					string url = "https://dlm.smartstore.com/api/v1/apprelease/CheckUpdate?app=SMNET&version={0}&language={1}".FormatInvariant(curVersion, lang);
 
 					using (var client = new HttpClient())
 					{
@@ -311,8 +176,9 @@ namespace SmartStore.Admin.Controllers
 						client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 						client.DefaultRequestHeaders.UserAgent.ParseAdd("SmartStore.NET {0}".FormatInvariant(curVersion));
 						client.DefaultRequestHeaders.Add("Authorization-Key", _services.StoreContext.CurrentStore.Url.TrimEnd('/'));
+						client.DefaultRequestHeaders.Add("X-Application-ID", HostingEnvironment.ApplicationID);
 
-						HttpResponseMessage response = client.GetAsync(url).Result;
+						HttpResponseMessage response = await client.GetAsync(url);
 
 						if (response.StatusCode != HttpStatusCode.OK)
 						{
@@ -353,13 +219,6 @@ namespace SmartStore.Admin.Controllers
 					return noUpdateResult;
 				}
 			});
-
-			var result = _services.Cache.Get<CheckUpdateResult>(cacheKey);
-
-			if (result == null)
-			{
-				result = execute();
-			}
 
 			return result;
 		}
@@ -412,6 +271,45 @@ namespace SmartStore.Admin.Controllers
 		#region UI Helpers
 
 		[HttpPost]
+		public JsonResult SearchIcons(string term, string selected = null, int page = 1)
+		{
+			const int pageSize = 250;
+
+			var icons = _iconExplorer.Value.All.AsEnumerable();
+
+			if (term.HasValue())
+			{
+				icons = _iconExplorer.Value.FindIcons(term, true);
+			}
+
+			var result = new PagedList<IconDescription>(icons, page - 1, pageSize);
+
+			if (selected.HasValue() && term.IsEmpty())
+			{
+				var selIcon = _iconExplorer.Value.GetIconByName(selected);
+				if (!selIcon.IsPro && !result.Contains(selIcon))
+				{
+					result.Insert(0, selIcon);
+				}
+			}
+
+			return Json(new
+			{
+				results = result.Select(x => new
+				{
+					id = x.Name,
+					text = x.Name,
+					hasRegularStyle = x.HasRegularStyle,
+					isBrandIcon = x.IsBrandIcon,
+					isPro = x.IsPro,
+					label = x.Label,
+					styles = x.Styles
+				}),
+				pagination = new { more = result.HasNextPage }
+			});
+		}
+
+		[HttpPost]
 		public JsonResult SetSelectedTab(string navId, string tabId, string path)
 		{
 			if (navId.HasValue() && tabId.HasValue() && path.HasValue())
@@ -444,34 +342,36 @@ namespace SmartStore.Admin.Controllers
 
             try
             {
-                model.OperatingSystem = Environment.OSVersion.VersionString;
+                model.OperatingSystem = "{0} (x{1})".FormatInvariant(Environment.OSVersion.VersionString, Environment.Is64BitProcess ? "64" : "32");
             }
-            catch (Exception) { }
+            catch { }
             try
             {
                 model.AspNetInfo = RuntimeEnvironment.GetSystemVersion();
             }
-            catch (Exception) { }
+            catch { }
             try
             {
                 model.IsFullTrust = AppDomain.CurrentDomain.IsFullyTrusted.ToString();
             }
-            catch (Exception) { }
+            catch { }
 
             model.ServerTimeZone = TimeZone.CurrentTimeZone.StandardName;
             model.ServerLocalTime = DateTime.Now;
             model.UtcTime = DateTime.UtcNow;
 			model.HttpHost = _services.WebHelper.ServerVariables("HTTP_HOST");
 
+			// DB size & used RAM
 			try
 			{
 				var mbSize = _services.DbContext.SqlQuery<decimal>("Select Sum(size)/128.0 From sysfiles").FirstOrDefault();
 				model.DatabaseSize = Convert.ToInt64(mbSize * 1024 *1024);
-				
-				model.UsedMemorySize = System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64;
+
+				model.UsedMemorySize = GetPrivateBytes();
 			}
 			catch {	}
 
+			// DB settings
 			try
 			{
 				if (DataSettings.Current.IsValid())
@@ -482,6 +382,7 @@ namespace SmartStore.Admin.Controllers
 			}
 			catch { }
 
+			// Loaded assemblies
 			try
 			{
 				var assembly = Assembly.GetExecutingAssembly();
@@ -499,8 +400,72 @@ namespace SmartStore.Admin.Controllers
                     //Location = assembly.Location
                 });
             }
-            return View(model);
+
+			// MemCache stats
+			model.MemoryCacheStats = GetMemoryCacheStats();
+
+			return View(model);
         }
+
+		/// <summary>
+		/// Counts the size of all objects in both IMemoryCache and ASP.NET cache
+		/// </summary>
+		private IDictionary<string, long> GetMemoryCacheStats()
+		{
+			var stats = new Dictionary<string, long>();
+			var cache = _services.Cache;
+			var instanceLookups = new HashSet<object>(ReferenceEqualityComparer.Default);
+
+			// HttpRuntine cache
+			var keys = HttpRuntime.Cache.Cast<DictionaryEntry>().Select(x => x.Key.ToString()).ToArray();
+			foreach (var key in keys)
+			{
+				var value = HttpRuntime.Cache.Get(key);
+				var size = GetObjectSize(value);
+				
+				stats.Add("AspNetCache:" + key.Replace(':', '_'), size + Encoding.Default.GetByteCount(key));
+			}
+
+
+			// Memory cache
+			if (!cache.IsDistributedCache)
+			{
+				keys = cache.Keys("*").ToArray();
+				foreach (var key in keys)
+				{
+					var value = cache.Get<object>(key);
+					var size = GetObjectSize(value);
+
+					stats.Add(key, size + Encoding.Default.GetByteCount(key));
+				}
+			}
+
+			return stats;
+
+			long GetObjectSize(object obj)
+			{
+				try
+				{
+					return CommonHelper.GetObjectSizeInBytes(obj, instanceLookups);
+				}
+				catch
+				{
+					return 0;
+				}
+			}
+		}
+
+		private long GetPrivateBytes()
+		{
+			GC.Collect();
+			GC.WaitForPendingFinalizers();
+			GC.Collect();
+
+			var process = System.Diagnostics.Process.GetCurrentProcess();
+			process.Refresh();
+
+			return process.PrivateMemorySize64;
+		}
 
         public ActionResult Warnings()
         {
@@ -559,8 +524,6 @@ namespace SmartStore.Admin.Controllers
 			{
 				var msg = T("Admin.System.Warnings.TaskScheduler.Fail", _taskScheduler.BaseUrl, exception.Message);
 
-				var xxx = T("Admin.System.Warnings.TaskScheduler.Fail");
-
 				model.Add(new SystemWarningModel
 				{
 					Level = SystemWarningLevel.Fail,
@@ -575,7 +538,7 @@ namespace SmartStore.Admin.Controllers
 			string sitemapUrl = null;
 			try
 			{
-				sitemapUrl = WebHelper.GetAbsoluteUrl(Url.RouteUrl("SitemapSEO"), this.Request);
+				sitemapUrl = WebHelper.GetAbsoluteUrl(Url.RouteUrl("XmlSitemap"), this.Request);
 				var request = WebHelper.CreateHttpRequestForSafeLocalCall(new Uri(sitemapUrl));
 				request.Method = "HEAD";
 				request.Timeout = 15000;
@@ -866,6 +829,8 @@ namespace SmartStore.Admin.Controllers
 			try
 			{
 				GC.Collect();
+				GC.WaitForPendingFinalizers();
+				GC.Collect();
 				await Task.Delay(500);
 				NotifySuccess(T("Admin.System.SystemInfo.GarbageCollectSuccessful"));
 			}
@@ -903,7 +868,7 @@ namespace SmartStore.Admin.Controllers
 			if (!_services.Permissions.Authorize(StandardPermissionProvider.ManageMaintenance))
                 return AccessDeniedView();
 
-			_imageCache.Value.DeleteCachedImages();
+			_imageCache.Value.Clear();
 
 			// get rid of cached image metadata
 			_services.Cache.Clear();
@@ -913,7 +878,7 @@ namespace SmartStore.Admin.Controllers
 
         [HttpPost, ActionName("Maintenance")]
         [FormValueRequired("delete-guests")]
-        public ActionResult MaintenanceDeleteGuests(MaintenanceModel model)
+        public async Task<ActionResult> MaintenanceDeleteGuests(MaintenanceModel model)
         {
 			if (!_services.Permissions.Authorize(StandardPermissionProvider.ManageMaintenance))
                 return AccessDeniedView();
@@ -924,7 +889,7 @@ namespace SmartStore.Admin.Controllers
             DateTime? endDateValue = (model.DeleteGuests.EndDate == null) ? null
 							: (DateTime?)_dateTimeHelper.Value.ConvertToUtcTime(model.DeleteGuests.EndDate.Value, _dateTimeHelper.Value.CurrentTimeZone).AddDays(1);
 
-            model.DeleteGuests.NumberOfDeletedCustomers = _customerService.DeleteGuestCustomers(startDateValue, endDateValue, model.DeleteGuests.OnlyWithoutShoppingCart);
+            model.DeleteGuests.NumberOfDeletedCustomers = await _customerService.DeleteGuestCustomersAsync(startDateValue, endDateValue, model.DeleteGuests.OnlyWithoutShoppingCart);
 
             return View(model);
         }
@@ -950,7 +915,6 @@ namespace SmartStore.Admin.Controllers
 
 			string[] paths = new string[]
 			{
-				appPath + @"Content\files\exportimport\",
 				appPath + @"Exchange\",
 				appPath + @"App_Data\Tenants\{0}\ExportProfiles\".FormatInvariant(DataSettings.Current.TenantName)
 			};
@@ -973,7 +937,7 @@ namespace SmartStore.Admin.Controllers
 						if ((!startDateValue.HasValue || startDateValue.Value < info.CreationTimeUtc) &&
 							(!endDateValue.HasValue || info.CreationTimeUtc < endDateValue.Value))
 						{
-							if (FileSystemHelper.Delete(fullPath))
+							if (FileSystemHelper.DeleteFile(fullPath))
 								++model.DeleteExportedFiles.NumberOfDeletedFiles;
 						}
 					}

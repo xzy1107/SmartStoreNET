@@ -1,57 +1,146 @@
-/// <reference path="shared/_colors.scss" />
-/// <reference path="bs4/scss/bootstrap.scss" />
+/// <reference path="../../../Content/shared/_variables-shared.scss" />
+/// <reference path="../../../Content/shared/_mixins.scss" />
+/// <reference path="_variables.scss" />
+/// <reference path="../../../Content/bs4/scss/bootstrap.scss" />
 
 //
 // Footer Styles
 // --------------------------------------------------
 
-
-#footer-wrapper {
-    border-top: 1px solid #ddd;
-    background: #f2f2f2;
-    padding-top: 2rem;
-    margin-top: 2rem;
+#footer {
+    border-top: 1px solid rgba(#000, 0.1);
+    background: $footer-bg;
 }
 
-.footer-main {
-    h4 {
-        padding: .5rem 0 1rem 0;
-    }
+.footer-social-wrapper {
+    padding: 2rem 0;
+}
+
+.footer-main-wrapper {
+    padding-top: 2rem;
+}
+
+.footer-social-wrapper ~ .footer-main-wrapper {
+    padding-top: 0;
+}
+
+.footer-main .footer-title {
+    margin-bottom: 1.25rem;
+    font-weight: $font-weight-normal;
+}
+
+.footer-links {
+    font-size: 1rem;
+    line-height: 1.8;
 
     a {
-        text-decoration: none;
-        color: #888;
-        &:hover { color: #0275d8; }       
+        display: block;
+        text-decoration: none;     
     }
 }
 
-.footer-social {
-    padding-bottom: 2rem;
+.footer-bottom {
+    padding: 1rem 0;
+    font-size: 90%;
+}
 
-    .btn-social {
-        display: inline-block;
-        border-color: transparent !important;
-        font-size: 1.2rem;
-        margin: 0 0.4rem;
-        color: #fff !important;
-        background-color: #aaa;
-        outline: 0;
-
-        &.btn-social-facebook       { &:hover, &:active { background-color: $clr-brand-facebook !important; } }
-        &.btn-social-twitter        { &:hover, &:active { background-color: $clr-brand-twitter !important; } }
-        &.btn-social-youtube        { &:hover, &:active { background-color: $clr-brand-youtube !important; } }
-        &.btn-social-pinterest      { &:hover, &:active { background-color: $clr-brand-pinterest !important; } }
-        &.btn-social-google-plus    { &:hover, &:active { background-color: $clr-brand-googleplus !important; } }
-        &.btn-social-flickr         { &:hover, &:active { background-color: $clr-brand-flickr !important; } }
-        &.btn-social-instagram      { &:hover, &:active { background-color: $clr-brand-instagram !important; } }
-        &.btn-social-linkedin       { &:hover, &:active { background-color: $clr-brand-linkedin !important; } }
-        &.btn-social-xing           { &:hover, &:active { background-color: $clr-brand-xing !important; } }
+@include media-breakpoint-up(md) {
+    .footer-bottom {
+        margin-top: 1rem;
     }
 }
 
-.footer-disclaimer {
-    border-top: 1px solid #bbb;
-    padding: 2rem 0;
-    margin-top: 2rem;
-    //font-size: $font-size-sm;
+@include media-breakpoint-down(sm) {
+    .footer-main-wrapper {
+        padding-top: 0;
+    }
+
+    .footer-main, 
+    .footer-bottom {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        width: 100% !important;
+		max-width: none;
+    }
+
+    .footer-bottom {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+
+    .nav-collapsible {
+        border-top: 1px solid darken($footer-bg, 10%);
+        border-bottom: 1px solid darken($footer-bg, 10%);
+        margin-top: -1px;
+    }
+
+    .footer-inverse .nav-collapsible {
+        border-top-color: lighten($footer-bg, 10%);
+        border-bottom-color: lighten($footer-bg, 10%);
+    }
+
+    .footer-main .footer-title {
+        margin-bottom: 0;
+    }
+}
+
+.footer-light {
+    $ftmh: darken($footer-color-muted, 30%);
+    color: $footer-color;
+
+    .footer-title {
+        color: $footer-color;
+    }
+
+    a.footer-link,
+    a.menu-link {
+        color: $footer-color-muted;
+        &:hover { color: $ftmh; }
+    }
+
+    .btn-social:not(:hover):not(:active):not(:focus) {
+        background-color: $footer-social-bg;
+        color: $footer-social-color;
+    }
+
+    .footer-bottom-wrapper {
+        background: rgba(#000, 0.03);
+        color: lighten($footer-color-muted, 5%);
+        a { color: $ftmh; }
+    }
+}
+
+.footer-inverse {
+    $ftmh: opacify($footer-inverse-color-muted, 0.2);
+    color: $footer-inverse-color;
+
+    .footer-title {
+        color: $footer-inverse-color;
+    }
+
+    a.footer-link,
+    a.menu-link {
+        color: $footer-inverse-color-muted;
+        &:hover { color: $ftmh; }
+    }
+
+    .btn-social:not(:hover):not(:active):not(:focus) {
+        background-color: transparent;
+        color: $footer-inverse-color-muted !important;
+    }
+
+    .footer-bottom-wrapper {
+        background: rgba(#fff, 0.06);
+        color: darken($footer-inverse-color-muted, 10%);
+        a { color: $ftmh; }
+    }
+}
+
+.footer-social .btn-social {
+    display: inline-block;
+    border-color: transparent !important;
+    box-shadow: none;
+    margin: 0 0.4rem;
 }

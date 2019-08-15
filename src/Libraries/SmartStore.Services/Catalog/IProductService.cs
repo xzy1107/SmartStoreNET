@@ -8,10 +8,10 @@ using SmartStore.Core.Domain.Orders;
 
 namespace SmartStore.Services.Catalog
 {
-	/// <summary>
-	/// Product service
-	/// </summary>
-	public partial interface IProductService
+    /// <summary>
+    /// Product service
+    /// </summary>
+    public partial interface IProductService
     {
 		#region Products
 
@@ -42,17 +42,24 @@ namespace SmartStore.Services.Catalog
         /// <returns>Products</returns>
         IList<Product> GetProductsByIds(int[] productIds, ProductLoadFlags flags = ProductLoadFlags.None);
 
-        /// <summary>
-        /// Inserts a product
-        /// </summary>
-        /// <param name="product">Product</param>
-        void InsertProduct(Product product);
+		/// <summary>
+		/// Get product by system name.
+		/// </summary>
+		/// <param name="systemName">System name</param>
+		/// <returns>Product entity.</returns>
+		Product GetProductBySystemName(string systemName);
+
+		/// <summary>
+		/// Inserts a product
+		/// </summary>
+		/// <param name="product">Product</param>
+		void InsertProduct(Product product);
 
         /// <summary>
         /// Updates the product
         /// </summary>
         /// <param name="product">Product</param>
-		void UpdateProduct(Product product, bool publishEvent = true);
+		void UpdateProduct(Product product);
 
         /// <summary>
         /// Update product review totals
@@ -146,19 +153,20 @@ namespace SmartStore.Services.Catalog
 		/// <returns>Map of product tags</returns>
 		Multimap<int, ProductTag> GetProductTagsByProductIds(int[] productIds);
 
-		/// <summary>
-		/// Get applied discounts by product identifiers
-		/// </summary>
-		/// <param name="productIds">Product identifiers</param>
-		/// <returns>Map of applied discounts</returns>
-		Multimap<int, Discount> GetAppliedDiscountsByProductIds(int[] productIds);
+        /// <summary>
+        /// Gets products that are assigned to group products.
+        /// </summary>
+        /// <param name="productIds">Grouped product identifiers.</param>
+        /// <param name="showHidden">A value indicating whether to show hidden records.</param>
+        /// <returns>Map of associated products.</returns>
+        Multimap<int, Product> GetAssociatedProductsByProductIds(int[] productIds, bool showHidden = false);
 
-		/// <summary>
-		/// Get product specification attributes by product identifiers
-		/// </summary>
-		/// <param name="productIds">Product identifiers</param>
-		/// <returns>Map of product specification attributes</returns>
-		Multimap<int, ProductSpecificationAttribute> GetProductSpecificationAttributesByProductIds(int[] productIds);
+        /// <summary>
+        /// Get applied discounts by product identifiers
+        /// </summary>
+        /// <param name="productIds">Product identifiers</param>
+        /// <returns>Map of applied discounts</returns>
+        Multimap<int, Discount> GetAppliedDiscountsByProductIds(int[] productIds);
 
         #endregion
 
@@ -222,12 +230,20 @@ namespace SmartStore.Services.Catalog
         /// <returns>Cross-sell product collection</returns>
         IList<CrossSellProduct> GetCrossSellProductsByProductId1(int productId1, bool showHidden = false);
 
-        /// <summary>
-        /// Gets a cross-sell product
-        /// </summary>
-        /// <param name="crossSellProductId">Cross-sell product identifier</param>
-        /// <returns>Cross-sell product</returns>
-        CrossSellProduct GetCrossSellProductById(int crossSellProductId);
+		/// <summary>
+		/// Gets a cross-sell product collection by many product identifiers
+		/// </summary>
+		/// <param name="productIds">A sequence of alpha product identifiers</param>
+		/// <param name="showHidden">A value indicating whether to show hidden records</param>
+		/// <returns>Cross-sell product collection</returns>
+		IList<CrossSellProduct> GetCrossSellProductsByProductIds(IEnumerable<int> productIds, bool showHidden = false);
+
+		/// <summary>
+		/// Gets a cross-sell product
+		/// </summary>
+		/// <param name="crossSellProductId">Cross-sell product identifier</param>
+		/// <returns>Cross-sell product</returns>
+		CrossSellProduct GetCrossSellProductById(int crossSellProductId);
 
         /// <summary>
         /// Inserts a cross-sell product
@@ -383,7 +399,14 @@ namespace SmartStore.Services.Catalog
 		/// <returns>Map of bundle items</returns>
 		Multimap<int, ProductBundleItem> GetBundleItemsByProductIds(int[] productIds, bool showHidden = false);
 
-		#endregion
+        /// <summary>
+        /// Checks whether a product is a bundle item.
+        /// </summary>
+        /// <param name="productId">Product identifier.</param>
+        /// <returns>True if the product is a bundle item.</returns>
+        bool IsBundleItem(int productId);
+
+        #endregion
     }
 
 	[Flags]

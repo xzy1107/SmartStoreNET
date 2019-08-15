@@ -5,7 +5,6 @@
 
 @model ManufacturerModel
 @{
-	Layout = "_ColumnsTwo";
 	Html.AddTitleParts(!String.IsNullOrEmpty(Model.MetaTitle) ? Model.MetaTitle : Model.Name);
 	Html.AddMetaDescriptionParts(Model.MetaDescription);
 	Html.AddMetaKeywordParts(Model.MetaKeywords);
@@ -17,52 +16,72 @@
 		Html.AddCanonicalUrlParts(manufacturerUrl);
 	}
 
-	Layout = Model.SearchResult.Facets.Count > 0 ? "_ColumnsTwo" : "_ColumnsOne";
+	int firstItemIndex = 0;
+	int lastItemIndex = 0;
+	if (Model.SearchResult.TotalHitsCount > 0)
+	{
+		firstItemIndex = Model.SearchResult.Hits.FirstItemIndex;
+		lastItemIndex = Model.SearchResult.Hits.LastItemIndex;
+	}
+
+	Layout = "_Layout";
+
+	ViewBag.HideLeftCol = true; // ...on mobile
 }
 
 @if (Model.SearchResult.Facets.Count > 0)
 {
 	@section left {
-		@{ Html.RenderAction("Filters", "Search", new { model = Model }); }
+		@{
+			Html.RenderAction("Filters", "Search", new { model = Model });
+		}
 	}
 }
 
 <div class="page manufacturer-page">
     <div class="page-title">
-        <h1 class="h3">@Model.Name</h1>
+        <h1 @Html.LanguageAttributes(Model.Name) class="h3">@Model.Name</h1>
+		@if (Model.SearchResult.TotalHitsCount > 0)
+		{
+			var pageIndex = "<span class='lrm'>{0}-{1}</span>".FormatInvariant(firstItemIndex.ToString("N0"), lastItemIndex.ToString("N0"));
+			var pageSize = "<span class='lrm'>" + Model.SearchResult.TotalHitsCount.ToString("N0") + "</span>";
+			<h5 class="search-hitcount">@Html.Raw(T("Search.PagingInfo", pageIndex, pageSize))</h5>
+		}
     </div>
 
     <div class="page-body">
         @{ Html.RenderWidget("manufacturerdetails_top"); }
         
 		@* Description *@
-        @if (!String.IsNullOrWhiteSpace(Model.Description))
+        @if (!string.IsNullOrWhiteSpace(Model.Description))
         {
-            <div class="manufacturer-description text-body">
+            <div @Html.LanguageAttributes(Model.Description) class="manufacturer-description lead html-editor-content">
                 @Html.Raw(Html.CollapsedText(Model.Description))
             </div>
         }
 
 		@* Featured products *@
         @if (Model.FeaturedProducts != null && Model.FeaturedProducts.Items.Count > 0)
-        {
-            Html.RenderWidget("manufacturerdetails_before_featured_products");
+		{
+			Html.RenderWidget("manufacturerdetails_before_featured_products");
 
-			<div class="featured-product-grid">
-				<div class="section-title">
-					@T("Products.FeaturedProducts")
+			<div class="product-grid featured-product-grid block">
+				<div class="heading heading-center">
+					<h3 class="heading-title fs-h1">@T("Products.FeaturedProducts")</h3>
 				</div>
-				@{
-                    Html.RenderPartial("Product.List", Model.FeaturedProducts);
-				}
+				<div class="block-body pt-3 artlist-no-separators">
+					@{
+						Html.RenderPartial("Product.List", Model.FeaturedProducts);
+					}
+				</div>
 			</div>
-                    }
+		}
 
 		@* Product list *@
 		@{ Html.RenderWidget("categorydetails_before_product_list"); }
 
 		<div class="product-list-container">
-			@if (Model.Products != null && Model.Products.Items.Count > 0)
+			@if (Model.Products != null)
             {
                 Html.RenderPartial("Product.List", Model.Products);
             }

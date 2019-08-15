@@ -1,7 +1,0 @@
-﻿@model List<ExternalAuthenticationMethodModel>
-@using SmartStore.Web.Models.Customer;
-
-@foreach (var eam in Model)
-{
-    Html.RenderAction(eam.ActionName, eam.ControllerName, eam.RouteValues);
-}

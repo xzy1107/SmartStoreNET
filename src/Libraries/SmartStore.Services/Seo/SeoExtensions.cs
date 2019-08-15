@@ -15,8 +15,7 @@ namespace SmartStore.Services.Seo
 {
     public static class SeoExtensions
     {
-
-        #region Product tag
+        #region Entities
 
         /// <summary>
         /// Gets product tag SE (search engine) name
@@ -37,15 +36,10 @@ namespace SmartStore.Services.Seo
         /// <returns>Product tag SE (search engine) name</returns>
         public static string GetSeName(this ProductTag productTag, int languageId)
         {
-            if (productTag == null)
-                throw new ArgumentNullException("productTag");
-            string seName = GetSeName(productTag.GetLocalized(x => x.Name, languageId));
-            return seName;
+			Guard.NotNull(productTag, nameof(productTag));
+
+			return GetSeName((string)productTag.GetLocalized(x => x.Name, languageId));
         }
-
-        #endregion
-
-        #region Blog / news
 
         /// <summary>
         /// Gets blog post SE (search engine) name
@@ -54,10 +48,21 @@ namespace SmartStore.Services.Seo
         /// <returns>Blog post SE (search engine) name</returns>
         public static string GetSeName(this BlogPost blogPost)
         {
-            if (blogPost == null)
-                throw new ArgumentNullException("blogPost");
-            string seName = GetSeName(blogPost.Title);
-            return seName;
+			Guard.NotNull(blogPost, nameof(blogPost));
+
+			return GetSeName(blogPost.Title);
+        }
+
+        /// <summary>
+        /// Gets blog post SE (search engine) name
+        /// </summary>
+        /// <param name="blogPost">Blog post</param>
+        /// <returns>Blog post SE (search engine) name</returns>
+        public static string GetSeName(this BlogPostTag blogPostTag)
+        {
+			Guard.NotNull(blogPostTag, nameof(blogPostTag));
+
+			return GetSeName(blogPostTag.Name);
         }
 
         /// <summary>
@@ -67,26 +72,21 @@ namespace SmartStore.Services.Seo
         /// <returns>News item SE (search engine) name</returns>
         public static string GetSeName(this NewsItem newsItem)
         {
-            if (newsItem == null)
-                throw new ArgumentNullException("newsItem");
-            string seName = GetSeName(newsItem.Title);
-            return seName;
+			Guard.NotNull(newsItem, nameof(newsItem));
+
+			return GetSeName(newsItem.Title);
         }
 
-        #endregion
-
-        #region Forum
-
-        /// <summary>
-        /// Gets ForumTopic SE (search engine) name
-        /// </summary>
-        /// <param name="forumTopic">ForumTopic</param>
-        /// <returns>ForumTopic SE (search engine) name</returns>
-        public static string GetSeName(this ForumTopic forumTopic)
+		/// <summary>
+		/// Gets ForumTopic SE (search engine) name
+		/// </summary>
+		/// <param name="forumTopic">ForumTopic</param>
+		/// <returns>ForumTopic SE (search engine) name</returns>
+		public static string GetSeName(this ForumTopic forumTopic)
         {
-            if (forumTopic == null)
-                throw new ArgumentNullException("forumTopic");
-            string seName = GetSeName(forumTopic.Subject);
+			Guard.NotNull(forumTopic, nameof(forumTopic));
+
+			string seName = GetSeName(forumTopic.Subject);
 
             // Trim SE name to avoid URLs that are too long
             var maxLength = 100;
@@ -98,22 +98,45 @@ namespace SmartStore.Services.Seo
             return seName;
         }
 
-        #endregion
+		/// <summary>
+		/// Get search engine name for a category node
+		/// </summary>
+		/// <param name="node">Node</param>
+		/// <returns>Search engine name</returns>
+		public static string GetSeName(this ICategoryNode node)
+		{
+			Guard.NotNull(node, nameof(node));
 
-        #region General
+			return GetSeName(
+				"Category",
+				node.Id,
+				EngineContext.Current.Resolve<IWorkContext>().WorkingLanguage.Id,
+				EngineContext.Current.Resolve<IUrlRecordService>(),
+				EngineContext.Current.Resolve<ILanguageService>());
+		}
 
-        /// <summary>
-        /// Get search engine name
-        /// </summary>
-        /// <typeparam name="T">Entity type</typeparam>
-        /// <param name="entity">Entity</param>
-        /// <returns>Search engine name</returns>
-        public static string GetSeName<T>(this T entity)
+		#endregion
+
+		#region Generic
+
+		/// <summary>
+		/// Get search engine name
+		/// </summary>
+		/// <typeparam name="T">Entity type</typeparam>
+		/// <param name="entity">Entity</param>
+		/// <returns>Search engine name</returns>
+		public static string GetSeName<T>(this T entity)
             where T : BaseEntity, ISlugSupported
         {
-            var workContext = EngineContext.Current.Resolve<IWorkContext>();
-            return GetSeName(entity, workContext.WorkingLanguage.Id);
-        }
+			Guard.NotNull(entity, nameof(entity));
+
+			return GetSeName(
+				entity.GetEntityName(),
+				entity.Id,
+				EngineContext.Current.Resolve<IWorkContext>().WorkingLanguage.Id,
+				EngineContext.Current.Resolve<IUrlRecordService>(),
+				EngineContext.Current.Resolve<ILanguageService>());
+		}
 
         /// <summary>
         ///  Get search engine name
@@ -124,11 +147,17 @@ namespace SmartStore.Services.Seo
         /// <param name="returnDefaultValue">A value indicating whether to return default value (if language specified one is not found)</param>
         /// <param name="ensureTwoPublishedLanguages">A value indicating whether to ensure that we have at least two published languages; otherwise, load only default value</param>
         /// <returns>Search engine name</returns>
-        public static string GetSeName<T>(this T entity, int languageId, bool returnDefaultValue = true, bool ensureTwoPublishedLanguages = true)
+        public static string GetSeName<T>(this T entity, 
+			int languageId, 
+			bool returnDefaultValue = true, 
+			bool ensureTwoPublishedLanguages = true)
             where T : BaseEntity, ISlugSupported
         {
+			Guard.NotNull(entity, nameof(entity));
+
 			return GetSeName(
-				entity,
+				entity.GetEntityName(),
+				entity.Id,
 				languageId, 
 				EngineContext.Current.Resolve<IUrlRecordService>(), 
 				EngineContext.Current.Resolve<ILanguageService>(), 
@@ -153,11 +182,28 @@ namespace SmartStore.Services.Seo
 			bool ensureTwoPublishedLanguages = true)
 			where T : BaseEntity, ISlugSupported
 		{
-			if (entity == null)
-				throw new ArgumentNullException("entity");
+			Guard.NotNull(entity, nameof(entity));
 
+			return GetSeName(
+				entity.GetEntityName(),
+				entity.Id,
+				languageId,
+				urlRecordService,
+				languageService,
+				returnDefaultValue,
+				ensureTwoPublishedLanguages);
+		}
+
+		private static string GetSeName(
+			string entityName,
+			int entityId,
+			int languageId,
+			IUrlRecordService urlRecordService,
+			ILanguageService languageService,
+			bool returnDefaultValue = true,
+			bool ensureTwoPublishedLanguages = true)
+		{
 			string result = string.Empty;
-			string entityName = typeof(T).Name;
 
 			if (languageId > 0)
 			{
@@ -171,28 +217,28 @@ namespace SmartStore.Services.Seo
 				// localized value
 				if (loadLocalizedValue)
 				{
-					result = urlRecordService.GetActiveSlug(entity.Id, entityName, languageId);
+					result = urlRecordService.GetActiveSlug(entityId, entityName, languageId);
 				}
 			}
 
 			// set default value if required
 			if (String.IsNullOrEmpty(result) && returnDefaultValue)
 			{
-				result = urlRecordService.GetActiveSlug(entity.Id, entityName, 0);
+				result = urlRecordService.GetActiveSlug(entityId, entityName, 0);
 			}
 
 			return result;
 		}
 
-        /// <summary>
-        /// Validate search engine name
-        /// </summary>
-        /// <param name="entity">Entity</param>
-        /// <param name="seName">Search engine name to validate</param>
-        /// <param name="name">User-friendly name used to generate sename</param>
-        /// <param name="ensureNotEmpty">Ensreu that sename is not empty</param>
-        /// <returns>Valid sename</returns>
-        public static string ValidateSeName<T>(this T entity, string seName, string name, bool ensureNotEmpty, int? languageId = null)
+		/// <summary>
+		/// Validate search engine name
+		/// </summary>
+		/// <param name="entity">Entity</param>
+		/// <param name="seName">Search engine name to validate</param>
+		/// <param name="name">User-friendly name used to generate sename</param>
+		/// <param name="ensureNotEmpty">Ensreu that sename is not empty</param>
+		/// <returns>Valid sename</returns>
+		public static string ValidateSeName<T>(this T entity, string seName, string name, bool ensureNotEmpty, int? languageId = null)
              where T : BaseEntity, ISlugSupported
         {
 			return entity.ValidateSeName(
@@ -216,9 +262,7 @@ namespace SmartStore.Services.Seo
 		{
 			Guard.NotNull(urlRecordService, nameof(urlRecordService));
 			Guard.NotNull(seoSettings, nameof(seoSettings));
-
-			if (entity == null)
-				throw new ArgumentNullException("entity");
+			Guard.NotNull(entity, nameof(entity));
 
 			// use name if sename is not specified
 			if (String.IsNullOrWhiteSpace(seName) && !String.IsNullOrWhiteSpace(name))
@@ -254,16 +298,14 @@ namespace SmartStore.Services.Seo
             }
             
 			// ensure this sename is not reserved yet
-			string entityName = typeof(T).Name;
+			string entityName = entity.GetEntityName();
 			int i = 2;
 			var tempSeName = seName;
-
-			extraSlugLookup = extraSlugLookup ?? ((s) => null);
 
 			while (true)
 			{
 				// check whether such slug already exists (and that it's not the current entity)
-				var urlRecord = urlRecordService.GetBySlug(tempSeName) ?? extraSlugLookup(tempSeName);
+				var urlRecord = urlRecordService.GetBySlug(tempSeName) ?? extraSlugLookup?.Invoke(tempSeName);
 				var reserved1 = urlRecord != null && !(urlRecord.EntityId == entity.Id && urlRecord.EntityName.Equals(entityName, StringComparison.InvariantCultureIgnoreCase));
 
 				if (!reserved1 && urlRecord != null && languageId.HasValue)
@@ -306,7 +348,8 @@ namespace SmartStore.Services.Seo
 				name,
 				seoSettings == null ? false : seoSettings.ConvertNonWesternChars,
 				seoSettings == null ? false : seoSettings.AllowUnicodeCharsInUrls,
-				seoSettings == null ? null : seoSettings.SeoNameCharConversion);
+                true,
+				seoSettings?.SeoNameCharConversion);
 		}
 
         #endregion

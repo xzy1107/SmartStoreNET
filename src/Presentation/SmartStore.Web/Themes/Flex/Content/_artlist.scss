@@ -1,4 +1,6 @@
-/// <reference path="bs4/scss/bootstrap.scss" />
+/// <reference path="../../../Content/shared/_variables-shared.scss" />
+/// <reference path="_variables.scss" />
+/// <reference path="../../../Content/bs4/scss/bootstrap.scss" />
 
 //
 // Article/Product list & item styles
@@ -8,11 +10,16 @@ $art-font-size:                 $font-size-base;
 $art-font-size-sm:              $font-size-sm;
 $art-font-size-xs:              $font-size-xs;
 $art-line-height:               1.3;
-$art-price-color:               $body-color;
-$art-price-offer-color:         $brand-danger;
+$art-price-color:               $product-price-color;
+$art-price-offer-color:         $red;
 $art-border-color:              #ddd;
-$art-active-bg-color:           #fff;
-$art-active-border-color:       rgba(0,0,0, 0.2);
+
+@mixin make-art-row() {
+    display: flex;
+    flex-wrap: wrap;
+    margin-right: ($grid-gutter-width / -2);
+    margin-left:  ($grid-gutter-width / -2);
+}
 
 @mixin make-art-col($cols) {
     $w: percentage(1 / $cols);
@@ -20,7 +27,6 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
     .art {
         flex: 0 0 $w;
         max-width: $w;
-        color: yellow;
     }
 
     &.artlist-boxed .art {
@@ -69,8 +75,14 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
     margin: 0 -0.25rem;
 }
 
+.artlist-action--filter,
+.artlist-action--sort {
+	flex-grow: 1;
+	max-width: 100%;
+}
+
 .artlist-action--pager {
-    > * { position: relative; display: block; float: left; }
+    > * { position: relative; }
     > *:not(:first-child) { margin-left: -1px; }
     .btn-pager-prev { border-top-left-radius: 3px; border-bottom-left-radius: 3px }   
     .btn-pager-next { border-top-right-radius: 3px; border-bottom-right-radius: 3px }    
@@ -87,7 +99,7 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
     .btn-artlist-action,
     .btn-artlist-action span { font-weight: 400 !important; }
 
-    .artlist-action-group--filtersort {
+    .artlist-action-group {
         .btn { 
             font-size: 1rem; text-align: left; border-radius: $btn-border-radius;
             > b { background: transparent; } 
@@ -96,20 +108,59 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
 }
 
 @include media-breakpoint-up(lg) {
-    .btn-artlist-action { font-weight: 600; }
+    .btn-artlist-action { font-weight: $font-weight-medium; }
 }
 
-.artlist-actions--top { 
-    border-bottom: 1px solid $art-border-color; 
-    display: flex;
-    flex-wrap: wrap;
-    .artlist-action-group { width: 100%; }
+.artlist-actions--top {
+	display: flex;
+	flex-wrap: wrap;
 
-    @include media-breakpoint-up(lg) {
-        flex-wrap: nowrap;
-        .artlist-action-group { width: auto; }
-        .artlist-action-group--page { margin-left: auto; }
-    }
+	.artlist-action-group {
+		width: 100%;
+	}
+
+	.artlist-action-group--filtersort {
+		flex: 1 1 0; // grow shrink basis
+		max-width: 100%;
+	}
+
+	.artlist-action-group--page {
+		flex: 0 0 auto; // grow shrink basis
+		width: auto;
+		max-width: none;
+		padding-left: 0.5rem;
+	}
+
+	.artlist-action--pagesize,
+	.artlist-action--pager {
+		display: none !important;
+	}
+
+	@include media-breakpoint-up(lg) {
+		flex-wrap: nowrap;
+		border-bottom: 1px solid $art-border-color;
+
+		.artlist-action-group--filtersort {
+			flex-grow: 0;
+		}
+
+		.artlist-action--pagesize,
+		.artlist-action--pager {
+			display: flex !important;
+		}
+
+		.artlist-action-group--page {
+			padding-left: 0;
+		}
+
+		.artlist-action-group {
+			width: auto;
+		}
+
+		.artlist-action-group--page {
+			margin-left: auto;
+		}
+	}
 }
 
 
@@ -126,14 +177,15 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
 
 .art {
     position: relative;
-    //float: none;
     min-height: 1px;
 
-    @include make-col();
-    @include make-col-span(12, $grid-columns);
+    // Prevent columns from becoming too narrow when at smaller grid tiers by
+    // always setting `width: 100%;`. This works because we use `flex` values
+    // later on to override this initial width.
+    width: 100%;
+    @include make-col(12, $grid-columns);
     
-    padding-top: $grid-gutter-width / 2; 
-    padding-bottom: $grid-gutter-width / 2;
+    padding: $grid-gutter-width / 2; 
     
     border: 1px solid transparent;
     background: transparent;   
@@ -142,7 +194,6 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
     margin-left: -1px;
 
     border-collapse: collapse;
-    //z-index: 1;
 
     &.active {
         background: $art-active-bg-color;
@@ -164,11 +215,20 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
         position: absolute;
         z-index: 1;
         left: 0;
-        top: 0;
+        top: 0rem;
         width: 100%;
         text-align: center;
-        color: $gray-light;
+        color: $gray-500;
     }
+}
+
+.art-picture.no-default-picture {
+    &:before {
+        top: 2rem;
+    }
+    img {
+		display: none;
+	}
 }
 
 .art-badges {
@@ -183,7 +243,6 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
     float: left;
     clear: both;
     position: relative;
-    //text-transform: uppercase;
     font-weight: normal;
     font-size: 0.85rem;
     border-radius: 0 0.85rem 0.85rem 0;
@@ -210,15 +269,18 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
 .art-name {
     box-sizing: content-box;
     font-size: $art-font-size;
-    font-weight: 600;
+    font-weight: $font-weight-medium;
     margin-bottom: 0.25rem;
+    line-height: $art-line-height;
     > a { color: $body-color; }
 }
 
 .art-genericname {
     font-size: $art-font-size;
-    font-weight: 600;
+    font-weight: $font-weight-medium;
     text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
     > a { color: $body-color; }
 }
 
@@ -235,12 +297,15 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
 
 .art-price {
     display: inline-block;  
-    font-weight: 600;
+    font-weight: $font-weight-medium;
     font-size: 1rem;
     color: $art-price-color;
 
     &.art-price--offer {
         color: $art-price-offer-color;
+    }
+    &.badge {
+        color: $white;
     }
 }
 
@@ -259,7 +324,7 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
 
 .art-shipsurcharge {
     font-size: $art-font-size-sm;
-    color: $brand-danger;
+    color: $danger;
     padding-top: 0.4rem;
     @include text-truncate();
 }
@@ -302,9 +367,7 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
         border: none;
         box-shadow: none;
         transition: none;
-        width: auto;
-        height: 2.75rem;
-        line-height: 2.75rem;
+        padding: 0.65rem 0;
 
         &.btn-secondary {
             color: #666;
@@ -338,8 +401,6 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
 .art-more-opts {
     font-size: $art-font-size-sm;
     color: $text-muted;
-    
-    > a { font-weight: bold; }  
 }
 
 .art-variant-info > * + * {
@@ -353,9 +414,8 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
 
     td { padding: 1px 0; }
     td:first-child { 
-        padding-right: 0.5rem; 
-        font-weight: 600; 
-        //color: $text-muted;
+        padding-right: 0.75rem; 
+        font-weight: $font-weight-medium; 
     }
 }
 
@@ -365,7 +425,7 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
 
 .artlist-lines {
     .art {
-        @include make-row();
+        @include make-art-row();
         margin-left: 0;
         margin-right: 0;
         padding-left: 0;
@@ -374,7 +434,7 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
     }
 
     .art-data-block {
-        @include make-row();
+        @include make-art-row();
         padding-left: $grid-gutter-width / 1.5;
         padding-right: 0;
         margin-left: 0;
@@ -399,7 +459,6 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
     }
 
     .art-info-block {
-        // TODO: (mc) Get col-xs from BS4 mixin here
         display: block;
         position: relative;
         min-height: 1px;
@@ -450,10 +509,6 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
         font-weight: 400;
     }
 
-    .art-oldprice {
-        //display: block;
-    }
-
     .art-variant-info {
         margin-bottom: 1rem;
     }
@@ -470,11 +525,22 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
             padding-left: 0;
             padding-top: 1rem;
             width: 100%;
+            /*position: static;*/
+        }
+
+        .art-info-block {
+            // Fix Android default browser layout glitch
+            flex-basis: initial;
+            flex-grow: initial;
         }
     }
 
     @include media-breakpoint-down(xs) {
         .art-picture-block { max-width: 30%; }
+    }
+
+    .delivery-time {
+        white-space: normal;
     }
 }
 
@@ -483,7 +549,7 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
 // ---------------------------------------------
 
 .artlist-grid {
-    @include make-row();
+    @include make-art-row();
     margin-left: 0;
     margin-right: 0;
 
@@ -499,6 +565,8 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
     
     .art {
         border-bottom-color: $art-border-color;
+        display: flex;
+        flex-flow: column;
     }
 
     // Grid has always 2 cols per row at least, even on xs
@@ -518,6 +586,11 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
     }
 
     .art-description {
+        // At least 2 lines height for description
+        height: ($art-font-size-sm * $art-line-height) * 2;
+    }
+    
+    &.artlist-boxed .art-price-block {
         // At least 2 lines height for description
         height: ($art-font-size-sm * $art-line-height) * 2;
     }
@@ -553,11 +626,21 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
         padding-right: $grid-gutter-width / 2;
     }
 
+    @include media-breakpoint-up(xs) {
+        &.artlist-1-col .art {
+            flex-basis: 100% !important;
+            max-width: initial !important;
+        }
+    }
+
     @include media-breakpoint-up(sm) {
         &.artlist-4-cols,
         &.artlist-5-cols,
         &.artlist-6-cols {
             @include make-art-col(3);
+        }
+        &.artlist-8-cols {
+            @include make-art-col(4);
         }
     }
 
@@ -567,6 +650,9 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
         }
         &.artlist-6-cols {
             @include make-art-col(4);
+        }
+        &.artlist-8-cols {
+            @include make-art-col(5);
         }
     }
 
@@ -579,6 +665,9 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
         &.artlist-6-cols {
             @include make-art-col(4);
         }
+        &.artlist-8-cols {
+            @include make-art-col(6);
+        }
     }
 
     @include media-breakpoint-up(xl) {
@@ -590,6 +679,9 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
         }
         &.artlist-6-cols {
             @include make-art-col(6);
+        }
+        &.artlist-8-cols {
+            @include make-art-col(8);
         }
     }
 
@@ -634,39 +726,53 @@ $art-active-border-color:       rgba(0,0,0, 0.2);
 .slick-slider {
     &.artlist-grid {
         display: block !important;
-        flex: initial !important;
-        flex-wrap: nowrap;
     }
 
     .art {
         display: inline-block !important;
-        max-width: initial !important;
+        max-width: none !important;
         //width: 180px; // avoids flickering during initial load
     }
 }
 
 
-/*@include media-breakpoint-between(xs, md) {
-    .art-rowdiv:nth-of-type(2n+0) {
-        display: block;
-    }   
-    .art:nth-of-type(2n+0) {
-        border-right-color: transparent;
-    }  
+// Special overrides
+// ---------------------------------------------
+
+.artlist-no-separators .artlist-grid:not(.artlist-boxed) {
+    .art {
+        border-bottom-width: 0 !important;
+    }
+    &:after {
+        height: 0 !important;
+    }
 }
-@include media-breakpoint-only(lg) {
-    .art-rowdiv:nth-of-type(3n+0) {
-        display: block;
-    } 
-    .art:nth-of-type(3n+0) {
-        border-right-color: transparent;
-    }    
+
+
+// 'Show all' special item
+// ---------------------------------------------
+
+.art.show-all-items {
+    padding: 0 !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+
+    .show-all-items-link {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        flex-grow: 1;
+        text-align: center;
+        padding: 1rem;
+        text-decoration: none !important;
+        font-size: 1.25rem;
+        font-weight: $font-weight-normal;
+
+        color: inherit !important;
+        background: rgba(#000, 0.06);
+        opacity: 0.5;
+
+        &:hover { opacity: 0.75; }
+        &:active { opacity: 1; }
+    }
 }
-@include media-breakpoint-only(xl) { 
-    .art-rowdiv:nth-of-type(4n+0) {
-        display: block;
-    } 
-    .art:nth-of-type(4n+0) {
-        border-right-color: transparent;
-    }    
-}*/

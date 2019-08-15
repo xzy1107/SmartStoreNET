@@ -1,18 +1,18 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Data.Entity.Core.Objects;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.Serialization;
 
 namespace SmartStore.Core
-{
-    
+{  
     /// <summary>
     /// Base class for entities
     /// </summary>
     [DataContract]
-    public abstract partial class BaseEntity
+    public abstract partial class BaseEntity : IEquatable<BaseEntity>
     {	
 		/// <summary>
         /// Gets or sets the entity identifier
@@ -21,20 +21,30 @@ namespace SmartStore.Core
 		[DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int Id { get; set; }
 
-	    [SuppressMessage("ReSharper", "PossibleNullReferenceException")]
+		[SuppressMessage("ReSharper", "PossibleNullReferenceException")]
+		public virtual string GetEntityName()
+		{
+			return GetUnproxiedType().Name;
+		}
+
 	    public Type GetUnproxiedType()
         {
-			var t = GetType();
-			if (t.AssemblyQualifiedName.StartsWith("System.Data.Entity."))
-			{
-				// it's a proxied type
-				t = t.BaseType;
-			}
-			return t;
-        }
+			#region Old
+			//var t = GetType();
+			//if (t.AssemblyQualifiedName.StartsWith("System.Data.Entity."))
+			//{
+			//	// it's a proxied type
+			//	t = t.BaseType;
+			//}
+
+			//return t;
+			#endregion
+
+			return ObjectContext.GetObjectType(GetType());
+		}
 
 		/// <summary>
-		/// Transient objects are not associated with an item already in storage.  For instance,
+		/// Transient objects are not associated with an item already in storage. For instance,
 		/// a Product entity is transient if its Id is 0.
 		/// </summary>
 		public virtual bool IsTransientRecord()
@@ -44,28 +54,33 @@ namespace SmartStore.Core
 
 		public override bool Equals(object obj)
 		{
-			return Equals(obj as BaseEntity);
+			return this.Equals(obj as BaseEntity);
 		}
 
-        protected virtual bool Equals(BaseEntity other)
-        {
-            if (other == null)
-                return false;
+		bool IEquatable<BaseEntity>.Equals(BaseEntity other)
+		{
+			return this.Equals(other);
+		}
 
-            if (ReferenceEquals(this, other))
-                return true;
+		protected virtual bool Equals(BaseEntity other)
+		{
+			if (other == null)
+				return false;
 
-            if (HasSameNonDefaultIds(other))
-            {
-                var otherType = other.GetUnproxiedType();
-                var thisType = GetUnproxiedType();
-                return thisType.Equals(otherType);
-            }
+			if (ReferenceEquals(this, other))
+				return true;
 
-            return false;
-        }
+			if (HasSameNonDefaultIds(other))
+			{
+				var otherType = other.GetUnproxiedType();
+				var thisType = GetUnproxiedType();
+				return thisType.Equals(otherType);
+			}
 
-	    [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
+			return false;
+		}
+
+		[SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
 	    public override int GetHashCode()
         {
 			if (IsTransientRecord())
@@ -99,5 +114,5 @@ namespace SmartStore.Core
 		{
 			return !this.IsTransientRecord() && !other.IsTransientRecord() && this.Id == other.Id;
 		}
-    }
+	}
 }

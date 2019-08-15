@@ -1,11 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Web.Mvc;
-using FluentValidation.Attributes;
-using SmartStore.Admin.Validators.Directory;
-using SmartStore.Web.Framework;
+﻿using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Localization;
 using SmartStore.Web.Framework.Modelling;
+using System.Collections.Generic;
+using System.Web.Mvc;
 
 namespace SmartStore.Admin.Models.Directory
 {
@@ -19,7 +16,10 @@ namespace SmartStore.Admin.Models.Directory
         [SmartResourceDisplayName("Admin.Configuration.QuantityUnit.Fields.Name")]
         public string Name { get; set; }
 
-		[SmartResourceDisplayName("Common.Description")]
+        [SmartResourceDisplayName("Admin.Configuration.QuantityUnit.Fields.NamePlural")]
+        public string NamePlural { get; set; }
+
+        [SmartResourceDisplayName("Common.Description")]
         [AllowHtml]
         public string Description { get; set; }
 
@@ -39,7 +39,10 @@ namespace SmartStore.Admin.Models.Directory
         [SmartResourceDisplayName("Admin.Configuration.QuantityUnit.Fields.Name")]
         public string Name { get; set; }
 
-		[SmartResourceDisplayName("Common.Description")]
+        [SmartResourceDisplayName("Admin.Configuration.QuantityUnit.Fields.NamePlural")]
+        public string NamePlural { get; set; }
+
+        [SmartResourceDisplayName("Common.Description")]
         public string Description { get; set; }
     }
 }

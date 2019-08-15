@@ -1,7 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Web.Mvc;
 using SmartStore.Core.Domain.Catalog;
+using SmartStore.Services.Catalog.Modelling;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Modelling;
 
@@ -12,11 +12,10 @@ namespace SmartStore.Admin.Models.Catalog
         public ProductVariantAttributeCombinationModel()
         {
             ProductVariantAttributes = new List<ProductVariantAttributeModel>();
-            AssignedPictureIds = new int[] { }; // init as empty array
+            AssignedPictureIds = new int[0];
             AssignablePictures = new List<PictureSelectItemModel>();
 			AvailableDeliveryTimes = new List<SelectListItem>();
             Warnings = new List<string>();
-			DisplayOrder = 0;
         }
         
         [SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.AttributeCombinations.Fields.StockQuantity")]
@@ -75,16 +74,16 @@ namespace SmartStore.Admin.Models.Catalog
 		public string ProductUrl { get; set; }
 		public string ProductUrlTitle { get; set; }
 
-		public long DisplayOrder { get; set; }
-
         [AllowHtml]
         public IList<string> Warnings { get; set; }
 
         public int ProductId { get; set; }
+		public string PrimaryStoreCurrencyCode { get; set; }
+		public string BaseDimensionIn { get; set; }
 
-        #region Nested classes
+		#region Nested classes
 
-        public class PictureSelectItemModel : EntityModelBase
+		public class PictureSelectItemModel : EntityModelBase
         {
             public string PictureUrl { get; set; }
             public bool IsAssigned { get; set; }
@@ -108,7 +107,12 @@ namespace SmartStore.Admin.Models.Catalog
             public AttributeControlType AttributeControlType { get; set; }
 
             public IList<ProductVariantAttributeValueModel> Values { get; set; }
-        }
+
+			public string GetControlId(int productId, int bundleItemId)
+			{
+				return ProductVariantQueryItem.CreateKey(productId, bundleItemId, ProductAttributeId, Id);
+			}
+		}
 
         public class ProductVariantAttributeValueModel : EntityModelBase
         {

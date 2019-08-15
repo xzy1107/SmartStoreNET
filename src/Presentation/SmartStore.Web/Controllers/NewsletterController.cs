@@ -6,6 +6,9 @@ using SmartStore.Core.Domain.Messages;
 using SmartStore.Services.Messages;
 using SmartStore.Web.Framework.Controllers;
 using SmartStore.Web.Models.Newsletter;
+using SmartStore.Web.Framework.Filters;
+using SmartStore.Services.Common;
+using SmartStore.Services;
 
 namespace SmartStore.Web.Controllers
 {
@@ -13,40 +16,42 @@ namespace SmartStore.Web.Controllers
     {
         private readonly IWorkContext _workContext;
         private readonly INewsLetterSubscriptionService _newsLetterSubscriptionService;
-        private readonly IWorkflowMessageService _workflowMessageService;
 		private readonly IStoreContext _storeContext;
-
         private readonly CustomerSettings _customerSettings;
+        private readonly Lazy<PrivacySettings> _privacySettings;
 
         public NewsletterController(
             IWorkContext workContext,
 			INewsLetterSubscriptionService newsLetterSubscriptionService,
-            IWorkflowMessageService workflowMessageService,
 			CustomerSettings customerSettings,
-			IStoreContext storeContext)
+			IStoreContext storeContext,
+            Lazy<PrivacySettings> privacySettings)
         {
-            this._workContext = workContext;
-            this._newsLetterSubscriptionService = newsLetterSubscriptionService;
-            this._workflowMessageService = workflowMessageService;
-            this._customerSettings = customerSettings;
-			this._storeContext = storeContext;
-        }
-
-        [ChildActionOnly]
-        public ActionResult NewsletterBox()
-        {
-            if (_customerSettings.HideNewsletterBlock)
-                return Content("");
-
-            return PartialView(new NewsletterBoxModel());
+            _workContext = workContext;
+            _newsLetterSubscriptionService = newsLetterSubscriptionService;
+            _customerSettings = customerSettings;
+			_storeContext = storeContext;
+            _privacySettings = privacySettings;
         }
 
         [HttpPost]
-        [ValidateInput(false)]
+		[GdprConsent]
         public ActionResult Subscribe(bool subscribe, string email)
         {
             string result;
             var success = false;
+			var customer = Services.WorkContext.CurrentCustomer;
+			var hasConsentedToGdpr = customer.GetAttribute<bool>(SystemCustomerAttributeNames.HasConsentedToGdpr);
+			var hasConsented = ViewData["GdprConsent"] != null ? (bool)ViewData["GdprConsent"] : hasConsentedToGdpr;
+
+			if (!hasConsented && _privacySettings.Value.DisplayGdprConsentOnForms)
+			{
+				return Json(new
+				{
+					Success = success,
+					Result = String.Empty
+				});
+			}
 
 			if (!email.IsEmail())
 			{
@@ -54,7 +59,7 @@ namespace SmartStore.Web.Controllers
 			}
 			else
 			{
-				//subscribe/unsubscribe
+				// subscribe/unsubscribe
 				email = email.Trim();
 
 				var subscription = _newsLetterSubscriptionService.GetNewsLetterSubscriptionByEmail(email, _storeContext.CurrentStore.Id);
@@ -64,7 +69,7 @@ namespace SmartStore.Web.Controllers
 					{
 						if (!subscription.Active)
 						{
-							_workflowMessageService.SendNewsLetterSubscriptionActivationMessage(subscription, _workContext.WorkingLanguage.Id);
+							Services.MessageFactory.SendNewsLetterSubscriptionActivationMessage(subscription, _workContext.WorkingLanguage.Id);
 						}
 						result = T("Newsletter.SubscribeEmailSent");
 					}
@@ -72,7 +77,7 @@ namespace SmartStore.Web.Controllers
 					{
 						if (subscription.Active)
 						{
-							_workflowMessageService.SendNewsLetterSubscriptionDeactivationMessage(subscription, _workContext.WorkingLanguage.Id);
+							Services.MessageFactory.SendNewsLetterSubscriptionDeactivationMessage(subscription, _workContext.WorkingLanguage.Id);
 						}
 						result = T("Newsletter.UnsubscribeEmailSent");
 					}
@@ -85,11 +90,12 @@ namespace SmartStore.Web.Controllers
 						Email = email,
 						Active = false,
 						CreatedOnUtc = DateTime.UtcNow,
-						StoreId = _storeContext.CurrentStore.Id
-					};
+						StoreId = _storeContext.CurrentStore.Id,
+                        WorkingLanguageId = _workContext.WorkingLanguage.Id
+                    };
 
 					_newsLetterSubscriptionService.InsertNewsLetterSubscription(subscription);
-					_workflowMessageService.SendNewsLetterSubscriptionActivationMessage(subscription, _workContext.WorkingLanguage.Id);
+					Services.MessageFactory.SendNewsLetterSubscriptionActivationMessage(subscription, _workContext.WorkingLanguage.Id);
 
 					result = T("Newsletter.SubscribeEmailSent");
 				}

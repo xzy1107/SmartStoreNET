@@ -1,54 +1,80 @@
-﻿/// <reference path="bs4/scss/bootstrap.scss" />
+﻿/// <reference path="../../../Content/shared/_variables-shared.scss" />
+/// <reference path="../../../Content/shared/_mixins.scss" />
+/// <reference path="_variables.scss" />
+/// <reference path="../../../Content/bs4/scss/bootstrap.scss" />
 
-$mm-navlink-font-size:                  1rem;
-$mm-bg:                                 $gray-lightest;
-$mm-light-color:                        $body-color;
-$mm-light-hover-color:                  scale-color($mm-bg, $lightness: -5%); //darken($mm-bg, 7%); // rgba(0, 0, 0, 0.06)
-$mm-dark-color:                         #fff;
-$mm-dark-hover-color:                   scale-color($mm-bg, $lightness: 15%); //lighten($mm-bg, 7%); // rgba(255,255,255, 0.1)
+$megamenu-zindex-base:          ($zindex-dropdown - 20);
+$color-layers:                  $megamenu-bg $header-bg $site-bg $body-bg;
+$mixed-megamenu-bg:             $megamenu-bg;
 
-.megamenu-section .navbar {
-    background: $mm-bg;
-    padding: 0; 
-}
-.megamenu {
-    overflow: hidden;
-    position: relative;
+@each $color in $color-layers {
+    $i: index($color-layers, $color);
 
-    .nav-link {
-        font-weight: 600;
-        font-size: $mm-navlink-font-size;
+    $next-color: $color;
+
+    @if length($color-layers) < $i  {
+        $next-color: nth($color-layers, $i + 1);    
+    }    
+    
+    @if (alpha($next-color) < 1 and $next-color != transparent)  {
+        $mixed-megamenu-bg: mix(rgba($color, 1), rgba($next-color, 1), alpha($color) * 100%);
     }
 }
 
+.megamenu-section .navbar {
+    background: $mixed-megamenu-bg;
+    padding: 0; 
+}
+
+.megamenu {
+    overflow: hidden;
+    position: relative;
+    width: 100%;
+    
+    .nav-link {
+        font-weight: $font-weight-medium;
+        font-size: $megamenu-navlink-font-size;
+    }
+    
+	.dropdown-toggle:after {
+		border: none !important;
+		@include fontawesome("\f107", $font-size-base);
+		width: auto;
+		height: auto;
+		vertical-align: middle;
+		margin-left: 0.15rem;
+	}
+}
+
 .navbar-light .megamenu .nav-item {
-    .nav-link { color: $mm-light-color; }
+    .nav-link { color: $megamenu-color; }
 
      &.active .nav-link, 
      .nav-link:focus, 
      .nav-link:hover { 
-         background: $mm-light-hover-color;
+         background: $header-hover-bg;
      }
 }
 
-.navbar-dark .megamenu .nav-item {
-    .nav-link { color: $mm-dark-color; }
+.navbar-inverse .megamenu .nav-item {
+    .nav-link { color: $megamenu-inverse-color; }
 
      &.active .nav-link, 
      .nav-link:focus, 
      .nav-link:hover { 
-         background: $mm-dark-hover-color; 
+         background: $header-inverse-hover-bg; 
      }
 } 
 
 // horizontal main navbar 
-.megamenu .nav {
+.megamenu .navbar-nav {
 	position: relative;
 	white-space: nowrap;
 	/* overwrites inline width */
 	width: auto !important;
 	transition: margin-left 0.12s ease-in-out;
 	margin-left: 0;
+    line-height: $megamenu-line-height;
 
     &:after {
         content: "";
@@ -56,59 +82,73 @@ $mm-dark-hover-color:                   scale-color($mm-bg, $lightness: 15%); //
         clear: both;
     }
 
-    .nav-item + .nav-item { 
-        margin-left: 0; 
-    }
-
     .nav-item {
-	    float: none !important;
-	    display: inline-block;
         position: relative;
- 
-        .label {
+
+        .badge {
             position: absolute;
             right: 3px;
-            top: 7px;
+            top: 4px;
             font-size: $font-size-xs;
         }
+        .badge-important { background: $primary; }
+        .badge-inverse { background: $danger; }
 
-        /* TODO: (mc) > (mh) correct enum BadgeStyle, determine valid entries for bs4 */
-        .label-important {
-            background: #0275d8; /* $brand-primary */
-        }
-        .label-inverse {
-            background: #d9534f; /* $brand-danger */
-        }
+        &:before, &:after { content: ""; }
 
-        /* active state */
-        &:before,
-        &:after {
-	        content: "";
-        }
         &.active:before {
             content: "";
             right: 0;
             position: absolute;
-            border-bottom: 15px solid #fff;
-            border-right: 17px solid transparent;
-            border-left: 17px solid transparent;
+            border-bottom: 10px solid $megamenu-dropdown-bg;
+            border-right: 12px solid transparent;
+            border-left: 12px solid transparent;
             bottom: -1px;
-            z-index: 1010;
+            z-index: ($megamenu-zindex-base + 3);
         }
+
         &.active:after {
             content: "";
             right: -2px;
             position: absolute;
-            border-bottom: 17px solid #bbb;
-            border-right: 19px solid transparent;
-            border-left: 19px solid transparent;
+            border-bottom: 12px solid $dropdown-border-color;
+            border-right: 14px solid transparent;
+            border-left: 14px solid transparent;
             bottom: -2px;
-            z-index: 1008;
+            z-index: ($megamenu-zindex-base + 2);
         }
+
+        &.selected .nav-link:before,
+        &.expanded .nav-link:before {
+            content: ' ';
+            display: block;
+            position: absolute;
+            width: 100%;
+            left: 0;
+            bottom: 1px;
+            height: 3px;
+            background: $header-selected-color;
+        }
+    }
+
+    .nav-item + .nav-item { 
+        margin-left: 0; 
     }
 }
 .touchevents .megamenu .nav-slider {
-	overflow-x: auto !important;
+    overflow-x: auto !important;
+}
+@include media-breakpoint-up(xl) {
+    .touchevents .megamenu .nav-slider {
+        overflow-x: auto !important;
+        overflow: -moz-scrollbars-none;
+        -ms-overflow-style: none;
+    }
+
+    .touchevents .megamenu .nav-slider::-webkit-scrollbar {
+        width: 0 !important;
+        height: 0 !important;
+    }
 }
 
 // horizontal navbar navigation buttons
@@ -118,27 +158,32 @@ $mm-dark-hover-color:                   scale-color($mm-bg, $lightness: 15%); //
     bottom: 0;
     transition: opacity .5s ease-in-out .1s;
     opacity: 0;
-    z-index: 1001;
+    z-index: $megamenu-zindex-base;
     display: none;
 
-    &.megamenu-nav--prev a { padding-right: 10px; }
-    &.megamenu-nav--next {
+    &.alpha {
+        left: 0;
+        a { padding-right: 10px; }
+    }
+
+    &.omega {
         right: 0;
         a { padding-left: 10px; }
-    }   
+    }
 
     .megamenu-nav-btn {
         border: none;
         box-shadow: none;
         position: relative;
-        z-index: 10000;
+        z-index: ($megamenu-zindex-base + 10);
         padding: 0px;
         width: 40px;
         height: 98%;
+        box-shadow: none !important;
     }
 
     i {
-        font-size: 38px;
+        font-size: 32px;
         transition: all .2s ease-in-out;
         height: 58px;
         line-height: 58px;
@@ -147,10 +192,10 @@ $mm-dark-hover-color:                   scale-color($mm-bg, $lightness: 15%); //
         padding: 0;
         margin: 0;
         display: inline-block;
-        opacity: 0.4;
+        opacity: 0.6;
 
-        &:hover { opacity: 0.6; }
-        &:active { opacity: 1; } 
+        &:hover { opacity: 0.85; }
+        &:active { opacity: 1; }
     }
 }
 .megamenu.megamenu-blend--next .megamenu-nav--next,
@@ -158,27 +203,36 @@ $mm-dark-hover-color:                   scale-color($mm-bg, $lightness: 15%); //
     opacity: 1;
     display: block;
 }
-.megamenu .megamenu-nav--prev .megamenu-nav-btn {
-    background-image: linear-gradient(to left, rgba($mm-bg, 0), $mm-bg 40%, $mm-bg 100%);
+
+.megamenu .megamenu-nav.alpha > .megamenu-nav-btn {
+    background-image: linear-gradient(to left, rgba($mixed-megamenu-bg, 0), $mixed-megamenu-bg 40%, $mixed-megamenu-bg 100%) !important;
 }
-.megamenu .megamenu-nav--next .megamenu-nav-btn {
-    background-image: linear-gradient(to right, rgba($mm-bg, 0), $mm-bg 40%, $mm-bg 100%);
+.megamenu .megamenu-nav.omega > .megamenu-nav-btn {
+    background-image: linear-gradient(to right, rgba($mixed-megamenu-bg, 0), $mixed-megamenu-bg 40%, $mixed-megamenu-bg 100%) !important;
 }
 
 .touchevents .megamenu-section .navbar:hover .show-scroll-buttons .megamenu-nav-btn i,
 .touchevents .megamenu-section .megamenu-nav-btn i,
 .megamenu .megamenu-nav i {
-    // TODO: (mh) adapt $mm-(light|dark)-color
-    color: #000;
+    color: $header-color;
     display: none;
+}
+.touchevents .megamenu-section .navbar-inverse.navbar:hover .show-scroll-buttons .megamenu-nav-btn i,
+.touchevents .megamenu-section .navbar-inverse .megamenu-nav-btn i,
+.navbar-inverse .megamenu .megamenu-nav i {
+    color: $header-inverse-color;
 }
 .megamenu-section .navbar:hover .show-scroll-buttons .megamenu-nav-btn i {
     display: block;
 }
 
-
 .megamenu-container {
     position: relative;
+
+	.show .mega-menu-dropdown,
+	.show .dropdown-menu {
+		display: block;
+	}
 
     .nav-link {
         padding: 1em .6em;
@@ -210,29 +264,45 @@ $mm-dark-hover-color:                   scale-color($mm-bg, $lightness: 15%); //
     }
 
     .mega-menu-dropdown {
-        z-index: 1007;
+        background-color: $megamenu-dropdown-bg;
+        color: $megamenu-text-color;
+        z-index: ($megamenu-zindex-base + 1);
         width: 100%;
         top: -3px;
         background-repeat: no-repeat;
         background-position: bottom right;
-        padding: 1.5rem;
+        padding: 0;
      
+        label { 
+            vertical-align: top;
+            margin-bottom: 0;
+        }
         .col-md-3 {
             overflow: hidden;
         }
+        .row > div:empty { height: 0; }
+    }
+
+    .mega-menu-dropdown-row {
+        padding: 1.5rem;
     }
 
     .mega-menu-dropdown-heading {
+        position: relative;
         font-size: 1rem;
-        font-weight: 600;
+        font-weight: $font-weight-medium; 
         line-height: 1.4rem;
         text-decoration: none;
         display: block;
-        color: #222;
+        color: $megamenu-heading-color;
         padding-bottom: 0.4rem;
+        transition: transform 0.2s ease-in-out;
 
-        label { vertical-align: top; }
         &:not(:first-child) { padding-top: 1rem; }
+
+        &:hover {
+            transform: translateX(5px);
+        }
     }
     .mega-menu-dropdown-heading + .mega-menu-dropdown-heading {
         padding-top: .5rem;
@@ -242,7 +312,7 @@ $mm-dark-hover-color:                   scale-color($mm-bg, $lightness: 15%); //
         font-size: $font-size-sm;
         text-decoration: none;
         display: block;
-        color: #999;
+        color: $megamenu-subitem-color;
 
         &:hover { color: #222; } 
         &.more-link {
@@ -284,15 +354,17 @@ $mm-dark-hover-color:                   scale-color($mm-bg, $lightness: 15%); //
     }
 }
 
-/* Product rotator */
+// product rotator 
 .megamenu-container .rotator-container {
     border: 1px solid rgba(0, 0, 0, 0.1);
-    background: rgba($dropdown-bg, 0.92);
+    background: $megamenu-rotator-bg;
     overflow: hidden;
+	min-height: 320px;
 
     .rotator-heading {
         padding: 0.5rem 0;
     }
+
     .rotator-content > div.placeholder {
         height: 280px;
         background-color: rgba(255,255,255, 0.85);
@@ -303,6 +375,34 @@ $mm-dark-hover-color:                   scale-color($mm-bg, $lightness: 15%); //
     }
 }
 
+@include media-breakpoint-up(xl) {
+	.megamenu-container .rotator-container {
+		// Prevents nav-item focus loss when background image is available
+		min-height: 370px;
+	}
+}
+
+// brand menu 
+#dropdown-menu--10 .dropdown-menu .mega-menu-dropdown-heading {
+    line-height: 1.125rem;
+}
+.brand-menu-footer {
+    background: $gray-100;
+    border-top: 1px solid $gray-300;
+    border-radius: 0 0 $border-radius $border-radius;
+}
+.brand-menu-footer-thumb-col {
+    width: 80px;
+    max-width: 80px;
+    min-width: 80px;
+    margin: 1rem 0;
+    filter: grayscale(100%);
+    &:hover { filter: initial; }
+}
+.brand-menu-footer-thumb {
+    margin: auto; 
+}
+
 @include media-breakpoint-down(md) {
     .megamenu-dropdown-container .picture-container {
         display: none;
@@ -311,9 +411,16 @@ $mm-dark-hover-color:                   scale-color($mm-bg, $lightness: 15%); //
 
 // exclusive for .simple
 .megamenu-dropdown-container.simple {
+    position: initial;
+    
     .dropdown-menu {
         margin-top: -1px;
         min-width: 250px;
+        z-index: ($megamenu-zindex-base + 1);
+		transform: translateX($grid-gutter-width/2);
+		&.ar {
+			transform: translateX(-($grid-gutter-width/2));
+		}
     }
     .dropdown-item {
         padding-top: 0.35rem;
@@ -327,5 +434,14 @@ $mm-dark-hover-color:                   scale-color($mm-bg, $lightness: 15%); //
     .nav-item.active:after {
         right: initial;
         left: 10px;
+    }
+}
+.megamenu.simple .navbar-nav .nav-item.active:before { 
+    border-bottom: 10px solid $dropdown-bg;
+}
+
+@media screen {
+    .boxed .megamenu-dropdown-container.simple .dropdown-menu {
+        margin-left: 20px;
     }
 }

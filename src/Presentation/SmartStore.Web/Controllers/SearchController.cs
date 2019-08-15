@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Web.Mvc;
 using SmartStore.Core.Domain.Catalog;
@@ -8,9 +7,11 @@ using SmartStore.Core.Domain.Media;
 using SmartStore.Core.Search;
 using SmartStore.Core.Search.Facets;
 using SmartStore.Services.Common;
+using SmartStore.Services.Localization;
 using SmartStore.Services.Search;
 using SmartStore.Services.Search.Modelling;
 using SmartStore.Services.Search.Rendering;
+using SmartStore.Services.Seo;
 using SmartStore.Web.Framework.Controllers;
 using SmartStore.Web.Framework.Security;
 using SmartStore.Web.Models.Catalog;
@@ -18,7 +19,7 @@ using SmartStore.Web.Models.Search;
 
 namespace SmartStore.Web.Controllers
 {
-	public partial class SearchController : PublicControllerBase
+    public partial class SearchController : PublicControllerBase
 	{
 		private readonly CatalogSettings _catalogSettings;
 		private readonly MediaSettings _mediaSettings;
@@ -27,6 +28,8 @@ namespace SmartStore.Web.Controllers
 		private readonly IGenericAttributeService _genericAttributeService;
 		private readonly CatalogHelper _catalogHelper;
 		private readonly ICatalogSearchQueryFactory _queryFactory;
+		private readonly ILocalizedEntityService _localizedEntityService;
+		private readonly IUrlRecordService _urlRecordService;
 		private readonly Lazy<IFacetTemplateProvider> _templateProvider;
 
 		public SearchController(
@@ -37,6 +40,8 @@ namespace SmartStore.Web.Controllers
 			SearchSettings searchSettings,
 			IGenericAttributeService genericAttributeService,
 			CatalogHelper catalogHelper,
+			ILocalizedEntityService localizedEntityService,
+			IUrlRecordService urlRecordService,
 			Lazy<IFacetTemplateProvider> templateProvider)
 		{
 			_queryFactory = queryFactory;
@@ -46,6 +51,8 @@ namespace SmartStore.Web.Controllers
 			_searchSettings = searchSettings;
 			_genericAttributeService = genericAttributeService;
 			_catalogHelper = catalogHelper;
+			_localizedEntityService = localizedEntityService;
+			_urlRecordService = urlRecordService;
 			_templateProvider = templateProvider;
 		}
 
@@ -56,8 +63,12 @@ namespace SmartStore.Web.Controllers
 
 			var model = new SearchBoxModel
 			{
-				InstantSearchEnabled = _searchSettings.InstantSearchEnabled,
-				ShowProductImagesInInstantSearch = _searchSettings.ShowProductImagesInInstantSearch,
+                Origin = "Search/Search",
+                SearchUrl = Url.RouteUrl("Search"),
+                InstantSearchUrl = Url.RouteUrl("InstantSearch"),
+                InputPlaceholder = T("Search.SearchBox.Tooltip"),
+                InstantSearchEnabled = _searchSettings.InstantSearchEnabled,
+				ShowThumbsInInstantSearch = _searchSettings.ShowProductImagesInInstantSearch,
 				SearchTermMinimumLength = _searchSettings.InstantSearchTermMinLength,
 				CurrentQuery = currentTerm
 			};
@@ -67,9 +78,11 @@ namespace SmartStore.Web.Controllers
 
 		[HttpPost]
 		public ActionResult InstantSearch(CatalogSearchQuery query)
-		{		
-			if (string.IsNullOrWhiteSpace(query.Term) || query.Term.Length < _searchSettings.InstantSearchTermMinLength)
-				return Content(string.Empty);
+		{
+            if (string.IsNullOrWhiteSpace(query.Term) || query.Term.Length < _searchSettings.InstantSearchTermMinLength)
+            {
+                return Content(string.Empty);
+            }
 
 			query
 				.BuildFacetMap(false)
@@ -88,25 +101,36 @@ namespace SmartStore.Web.Controllers
 			var mappingSettings = _catalogHelper.GetBestFitProductSummaryMappingSettings(ProductSummaryViewMode.Mini, x => 
 			{
 				x.MapPrices = false;
+				x.MapShortDescription = true;
+				x.MapPictures = _searchSettings.ShowProductImagesInInstantSearch;
+				x.ThumbnailSize = _mediaSettings.ProductThumbPictureSizeOnProductDetailsPage;
+				x.PrefetchTranslations = true;
+				x.PrefetchUrlSlugs = true;
 			});
 
-			// TODO: (mc) actually SHOW pictures in InstantSearch (???)
-			mappingSettings.MapPictures = _searchSettings.ShowProductImagesInInstantSearch;
-			mappingSettings.ThumbnailSize = _mediaSettings.ProductThumbPictureSizeOnProductDetailsPage;
+			using (_urlRecordService.BeginScope(false))
+			using (_localizedEntityService.BeginScope(false))
+			{
+				// InstantSearch should be REALLY very fast! No time for smart caching stuff.
+				if (result.Hits.Count > 0)
+				{
+					_localizedEntityService.PrefetchLocalizedProperties(
+						nameof(Product),
+						Services.WorkContext.WorkingLanguage.Id,
+						result.Hits.Select(x => x.Id).ToArray());
+				}
+				
+				// Add product hits.
+				model.TopProducts = _catalogHelper.MapProductSummaryModel(result.Hits, mappingSettings);
 
-			var summaryModel = _catalogHelper.MapProductSummaryModel(result.Hits, mappingSettings);
+				// Add spell checker suggestions (if any).
+				model.AddSpellCheckerSuggestions(result.SpellCheckerSuggestions, T, x => Url.RouteUrl("Search", new { q = x }));
+			}
 
-			// Add product hits
-			model.TopProducts = summaryModel;
-
-			// Add spell checker suggestions (if any)
-			AddSpellCheckerSuggestionsToModel(result.SpellCheckerSuggestions, model);
-
-			return PartialView(model);
+            return PartialView(model);
 		}
 
-		[RequireHttpsByConfigAttribute(SslRequirement.No)]
-		[ValidateInput(false)]
+		[RewriteUrl(SslRequirement.No)]
 		public ActionResult Search(CatalogSearchQuery query)
 		{
 			var model = new SearchResultModel(query);
@@ -114,6 +138,7 @@ namespace SmartStore.Web.Controllers
 
 			if (query.Term == null || query.Term.Length < _searchSettings.InstantSearchTermMinLength)
 			{
+				model.SearchResult = new CatalogSearchResult(query);
 				model.Error = T("Search.SearchTermMinimumLengthIsNCharacters", _searchSettings.InstantSearchTermMinLength);
 				return View(model);
 			}
@@ -128,10 +153,10 @@ namespace SmartStore.Web.Controllers
 			{
 				result = _catalogSearchService.Search(query);
 			}
-			catch (Exception exception)
+			catch (Exception ex)
 			{
-				model.Error = exception.ToString();
-				result = new CatalogSearchResult(null, query, 0, () => new List<Product>(), null, null);
+				model.Error = ex.ToString();
+				result = new CatalogSearchResult(query);
 			}
 
 			if (result.TotalHitsCount == 0 && result.SpellCheckerSuggestions.Any())
@@ -163,16 +188,13 @@ namespace SmartStore.Web.Controllers
 			var mappingSettings = _catalogHelper.GetBestFitProductSummaryMappingSettings(query.GetViewMode());
 			var summaryModel = _catalogHelper.MapProductSummaryModel(result.Hits, mappingSettings);
 
-			// Prepare paging/sorting/mode stuff
+			// Prepare paging/sorting/mode stuff.
 			_catalogHelper.MapListActions(summaryModel, null, _catalogSettings.DefaultPageSizeOptions);
 
-			// Add product hits
+			// Add product hits.
 			model.TopProducts = summaryModel;
 
-			// Add spell checker suggestions (if any)
-			AddSpellCheckerSuggestionsToModel(result.SpellCheckerSuggestions, model);
-
-			return View(model);
+            return View(model);
 		}
 
 		[ChildActionOnly]
@@ -206,7 +228,7 @@ namespace SmartStore.Web.Controllers
 		[ChildActionOnly]
 		public ActionResult ActiveFilters(ISearchResultModel model)
 		{
-			if (model == null)
+			if (model == null || (ControllerContext.ParentActionViewContext != null && ControllerContext.ParentActionViewContext.IsChildAction))
 			{
 				return Content("");
 			}
@@ -217,64 +239,8 @@ namespace SmartStore.Web.Controllers
 		[ChildActionOnly]
 		public ActionResult FacetGroup(FacetGroup facetGroup, string templateName)
 		{
-			// Just a "proxy" for our "StandardFacetTemplateSelector"
+			// Just a "proxy" for our "DefaultFacetTemplateSelector"
 			return PartialView(templateName, facetGroup);
-		}
-
-		// TODO: (mc) what about this stuff ?!
-		//private SearchPageFilterModel CreateSearchPageFilterModel(CatalogSearchResult searchResult)
-		//{
-		//	var model = new SearchPageFilterModel(searchResult);
-		//	FacetGroup group;
-
-		//	if (searchResult.Facets.TryGetValue("price", out group))
-		//	{
-		//		// format prices for price facet labels
-		//		// TODO: formatting without decimals would be nice
-		//		var priceLabelTemplate = T("Search.Facet.PriceMax").Text;
-
-		//		foreach (var facet in group.Facets.Where(x => x.Value.UpperValue != null))
-		//		{
-		//			var price = _priceFormatter.FormatPrice(Convert.ToDecimal((double)facet.Value.UpperValue), true, false);
-		//			facet.Value.Label = priceLabelTemplate.FormatInvariant(price);
-		//		}
-
-		//		// handle individual price filter
-		//		var individualPrice = group.Facets.FirstOrDefault(x => x.HitCount == 0);
-		//		if (individualPrice != null)
-		//		{
-		//			var value = individualPrice.Value;
-		//			if (value.IncludesLower && value != null)
-		//				model.IndividualPriceFrom = ((double)value.Value).ToString("F0", CultureInfo.InvariantCulture);
-
-		//			if (value.IncludesUpper && value.UpperValue != null)
-		//				model.IndividualPriceTo = ((double)value.UpperValue).ToString("F0", CultureInfo.InvariantCulture);
-		//		}
-		//	}
-
-		//	return model;
-		//}
-
-		private void AddSpellCheckerSuggestionsToModel(string[] suggestions, SearchResultModel model)
-		{
-			if (suggestions.Length == 0)
-				return;
-
-			var hitGroup = new SearchResultModel.HitGroup(model)
-			{
-				Name = "SpellChecker",
-				DisplayName = T("Search.DidYouMean"),
-				Ordinal = -100
-			};
-
-			hitGroup.Hits.AddRange(suggestions.Select(x => new SearchResultModel.HitItem
-			{
-				Label = x,
-				Url = Url.RouteUrl("Search", new { q = x }),
-				NoHighlight = true
-			}));
-
-			model.HitGroups.Add(hitGroup);
 		}
 	}
 }

@@ -1,20 +1,15 @@
 using System.Collections.Generic;
-using System.Net;
 using SmartStore.Core.Configuration;
-using SmartStore.PayPal.Services;
 
 namespace SmartStore.PayPal.Settings
 {
-    public abstract class PayPalSettingsBase
+	public abstract class PayPalSettingsBase
     {
 		public PayPalSettingsBase()
 		{
-			SecurityProtocol = SecurityProtocolType.Tls12;
 			IpnChangesPaymentStatus = true;
 			AddOrderNotes = true;
 		}
-
-		public SecurityProtocolType? SecurityProtocol { get; set; }
 
 		public bool UseSandbox { get; set; }
 
@@ -33,7 +28,7 @@ namespace SmartStore.PayPal.Settings
 		public bool IpnChangesPaymentStatus { get; set; }
 	}
 
-    public abstract class PayPalApiSettingsBase : PayPalSettingsBase
+    public class PayPalApiSettingsBase : PayPalSettingsBase
 	{
 		public TransactMode TransactMode { get; set; }
 		public string ApiAccountName { get; set; }
@@ -66,7 +61,6 @@ namespace SmartStore.PayPal.Settings
     {
 		public PayPalDirectPaymentSettings()
 		{
-			UseSandbox = true;
 			TransactMode = TransactMode.Authorize;
 		}
     }
@@ -75,7 +69,6 @@ namespace SmartStore.PayPal.Settings
     {
 		public PayPalExpressPaymentSettings()
 		{
-			UseSandbox = true;
             TransactMode = TransactMode.Authorize;
 		}
 
@@ -112,15 +105,15 @@ namespace SmartStore.PayPal.Settings
 
 	public class PayPalPlusPaymentSettings : PayPalApiSettingsBase, ISettings
 	{
-		public PayPalPlusPaymentSettings()
-		{
-			UseSandbox = true;
-		}
+        public PayPalPlusPaymentSettings()
+        {
+            TransactMode = TransactMode.AuthorizeAndCapture;
+        }
 
-		/// <summary>
-		/// Specifies other payment methods to be offered in payment wall
-		/// </summary>
-		public List<string> ThirdPartyPaymentMethods { get; set; }
+        /// <summary>
+        /// Specifies other payment methods to be offered in payment wall
+        /// </summary>
+        public List<string> ThirdPartyPaymentMethods { get; set; }
 
 		/// <summary>
 		/// Specifies whether to display the logo of a third party payment method
@@ -137,8 +130,8 @@ namespace SmartStore.PayPal.Settings
     {
 		public PayPalStandardPaymentSettings()
 		{
-			UseSandbox = true;
             EnableIpn = true;
+			IsShippingAddressRequired = true;
 		}
 
         public string BusinessEmail { get; set; }
@@ -148,7 +141,17 @@ namespace SmartStore.PayPal.Settings
 		public bool PdtValidateOnlyWarn { get; set; }
         public bool EnableIpn { get; set; }
         public string IpnUrl { get; set; }
-    }
+
+		/// <summary>
+		/// Specifies whether to use PayPal shipping address. <c>true</c> use PayPal address, <c>false</c> use checkout address.
+		/// </summary>
+		public bool UsePayPalAddress { get; set; }
+
+		/// <summary>
+		/// Specifies whether a shipping address is required.
+		/// </summary>
+		public bool IsShippingAddressRequired { get; set; }
+	}
 
 
 	/// <summary>

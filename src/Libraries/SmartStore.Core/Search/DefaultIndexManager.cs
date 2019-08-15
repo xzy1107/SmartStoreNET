@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace SmartStore.Core.Search
 {
-	public class DefaultIndexManager : IIndexManager
+    public class DefaultIndexManager : IIndexManager
 	{
 		private readonly IEnumerable<Lazy<IIndexProvider>> _providers;
 
@@ -13,14 +13,14 @@ namespace SmartStore.Core.Search
 			_providers = providers;
 		}
 
-		public bool HasAnyProvider()
+		public bool HasAnyProvider(string scope, bool activeOnly = true)
 		{
-			return _providers.Any(x => x.Value.IsActive);
+            return _providers.Any(x => !activeOnly || x.Value.IsActive(scope));
 		}
 
-		public IIndexProvider GetIndexProvider()
+		public IIndexProvider GetIndexProvider(string scope, bool activeOnly = true)
 		{
-			return _providers.FirstOrDefault(x => x.Value.IsActive)?.Value;
+			return _providers.FirstOrDefault(x => !activeOnly || x.Value.IsActive(scope))?.Value;
 		}
 	}
 }

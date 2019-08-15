@@ -1,11 +1,14 @@
-﻿using System.Collections.Generic;
-using System.Web.Mvc;
+﻿using FluentValidation;
+using FluentValidation.Attributes;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Web.Framework;
+using System.Collections.Generic;
+using System.Web.Mvc;
 
 namespace SmartStore.Admin.Models.Settings
 {
-	public class CatalogSettingsModel
+    [Validator(typeof(CatalogSettingsValidator))]
+    public class CatalogSettingsModel
     {
         public CatalogSettingsModel()
         {
@@ -33,8 +36,17 @@ namespace SmartStore.Admin.Models.Settings
         [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ShowDiscountSign")]
         public bool ShowDiscountSign { get; set; }
 
+        [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.PriceDisplayStyle")]
+        public PriceDisplayStyle PriceDisplayStyle { get; set; }
+
+        [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.DisplayTextForZeroPrices")]
+        public bool DisplayTextForZeroPrices { get; set; }
+
         [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.IgnoreDiscounts")]
         public bool IgnoreDiscounts { get; set; }
+
+        [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ApplyTierPricePercentageToAttributePriceAdjustments")]
+        public bool ApplyTierPricePercentageToAttributePriceAdjustments { get; set; }
 
         [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.IgnoreFeaturedProducts")]
         public bool IgnoreFeaturedProducts { get; set; }
@@ -66,11 +78,23 @@ namespace SmartStore.Admin.Models.Settings
         [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ShowDefaultDeliveryTime")]
         public bool ShowDefaultDeliveryTime { get; set; }
 
+        [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ShowPopularProductTagsOnHomepage")]
+        public bool ShowPopularProductTagsOnHomepage { get; set; }
+
         [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ShowManufacturersOnHomepage")]
         public bool ShowManufacturersOnHomepage { get; set; }
 
-        [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ManufacturersBlockItemsToDisplay")]
-        public int ManufacturersBlockItemsToDisplay { get; set; }
+        [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ShowManufacturersInOffCanvas")]
+        public bool ShowManufacturersInOffCanvas { get; set; }
+
+        [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.MaxItemsToDisplayInCatalogMenu")]
+        public int MaxItemsToDisplayInCatalogMenu { get; set; }
+
+        [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ManufacturerItemsToDisplayOnHomepage")]
+        public int ManufacturerItemsToDisplayOnHomepage { get; set; }
+
+        [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ManufacturerItemsToDisplayInOffcanvasMenu")]
+        public int ManufacturerItemsToDisplayInOffCanvasMenu { get; set; }
 
         [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ShowManufacturerPictures")]
         public bool ShowManufacturerPictures { get; set; }
@@ -139,9 +163,18 @@ namespace SmartStore.Admin.Models.Settings
 		[SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.PriceDisplayType")]
 		public PriceDisplayType PriceDisplayType { get; set; }
 		public SelectList AvailablePriceDisplayTypes { get; set; }
-
-		[SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.GridStyleListColumnSpan")]
+        
+        [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.GridStyleListColumnSpan")]
 		public GridColumnSpan GridStyleListColumnSpan { get; set; }
+
+		[SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ShowSubCategoriesInSubPages")]
+		public bool ShowSubCategoriesInSubPages { get; set; }
+
+		[SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ShowDescriptionInSubPages")]
+		public bool ShowDescriptionInSubPages { get; set; }
+
+		[SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.IncludeFeaturedProductsInSubPages")]
+		public bool IncludeFeaturedProductsInSubPages { get; set; }
 
 		#endregion
 
@@ -211,6 +244,9 @@ namespace SmartStore.Admin.Models.Settings
         [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.AllowAnonymousUsersToEmailAFriend")]
         public bool AllowAnonymousUsersToEmailAFriend { get; set; }
 
+        [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.AllowDifferingEmailAddressForEmailAFriend")]
+        public bool AllowDifferingEmailAddressForEmailAFriend { get; set; }
+        
         #endregion 
 
         #region Product detail
@@ -230,6 +266,9 @@ namespace SmartStore.Admin.Models.Settings
         [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ShowShareButton")]
         public bool ShowShareButton { get; set; }
 
+        [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.PageShareCode")]
+        public string PageShareCode { get; set; }
+        
         [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ProductsAlsoPurchasedEnabled")]
         public bool ProductsAlsoPurchasedEnabled { get; set; }
 
@@ -261,6 +300,9 @@ namespace SmartStore.Admin.Models.Settings
         [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ShowVariantCombinationPriceAdjustment")]
         public bool ShowVariantCombinationPriceAdjustment { get; set; }
 
+        [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ShowLoginForPriceNote")]
+        public bool ShowLoginForPriceNote { get; set; }
+
         [SmartResourceDisplayName("Admin.Configuration.Settings.Catalog.ShowLinkedAttributeValueQuantity")]
         public bool ShowLinkedAttributeValueQuantity { get; set; }
 
@@ -269,4 +311,12 @@ namespace SmartStore.Admin.Models.Settings
 
         #endregion 
 	}
+
+    public partial class CatalogSettingsValidator : AbstractValidator<CatalogSettingsModel>
+    {
+        public CatalogSettingsValidator()
+        {
+            RuleFor(x => x.LabelAsNewForMaxDays).LessThan(1000);
+        }
+    }
 }

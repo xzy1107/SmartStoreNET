@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using NuGet;
+using SmartStore.Collections;
+using SmartStore.Core;
 using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Media;
@@ -13,7 +16,7 @@ using SmartStore.Services.Media.Storage;
 
 namespace SmartStore.Services.Media
 {
-	public partial class DownloadService : IDownloadService
+    public partial class DownloadService : IDownloadService
     {
         private readonly IRepository<Download> _downloadRepository;
         private readonly IEventPublisher _eventPubisher;
@@ -44,9 +47,6 @@ namespace SmartStore.Services.Media
 				// save to storage
 				_storageProvider.Value.Save(download.ToMedia(), downloadBinary);
 			}
-
-			// event notification
-			_eventPubisher.EntityUpdated(download);
 		}
 
 		public virtual Download GetDownloadById(int downloadId)
@@ -70,12 +70,69 @@ namespace SmartStore.Services.Media
 			var downloads = query.ToList();
 
 			// sort by passed identifier sequence
-			var sortQuery = from i in downloadIds
-							join d in downloads on i equals d.Id
-							select d;
-
-			return sortQuery.ToList();
+			return downloads.OrderBySequence(downloadIds).ToList();
 		}
+        
+		public virtual IList<Download> GetDownloadsFor<TEntity>(TEntity entity) where TEntity : BaseEntity
+		{
+			Guard.NotNull(entity, nameof(entity));
+
+			return GetDownloadsFor(entity.Id, entity.GetUnproxiedType().Name);
+		}
+
+		public virtual IList<Download> GetDownloadsFor(int entityId, string entityName)
+		{
+			if (entityId > 0)
+			{
+				var downloads = (from x in _downloadRepository.Table
+								 where x.EntityId == entityId && x.EntityName == entityName
+								 select x).ToList();
+
+				if (downloads.Any())
+				{
+					var idsOrderedByVersion = downloads
+						.Select(x => new { x.Id, Version = new SemanticVersion(x.FileVersion.HasValue() ? x.FileVersion : "1.0.0.0") })
+						.OrderBy(x => x.Version)
+						.Select(x => x.Id);
+
+					downloads = new List<Download>(downloads.OrderBySequence(idsOrderedByVersion));
+
+					return downloads;
+				}
+			}
+
+			return new List<Download>();
+		}
+
+        public virtual Download GetDownloadByVersion(int entityId, string entityName, string fileVersion)
+        {
+            if (entityId > 0 && fileVersion.HasValue() && entityName.HasValue())
+            {
+                var download = (from x in _downloadRepository.Table
+                                 where x.EntityId == entityId && x.EntityName.Equals(entityName) && x.FileVersion.Equals(fileVersion)
+                                 select x).FirstOrDefault();
+                
+                return download;
+            }
+
+            return null;
+        }
+
+        public virtual Multimap<int, Download> GetDownloadsByEntityIds(int[] entityIds, string entityName)
+        {
+            Guard.NotNull(entityIds, nameof(entityIds));
+            Guard.NotEmpty(entityName, nameof(entityName));
+
+            var query = _downloadRepository.TableUntracked
+                .Where(x => entityIds.Contains(x.EntityId) && x.EntityName == entityName)
+				.OrderBy(x => x.FileVersion);
+
+            var map = query
+                .ToList()
+                .ToMultimap(x => x.EntityId, x => x);
+
+            return map;
+        }
 
         public virtual Download GetDownloadByGuid(Guid downloadGuid)
         {
@@ -98,9 +155,6 @@ namespace SmartStore.Services.Media
 
 			// delete entity
 			_downloadRepository.Delete(download);
-
-			// event notification
-			_eventPubisher.EntityDeleted(download);
         }
 
         public virtual void InsertDownload(Download download, byte[] downloadBinary)
@@ -111,9 +165,6 @@ namespace SmartStore.Services.Media
 
 			// save to storage
 			_storageProvider.Value.Save(download.ToMedia(), downloadBinary);
-
-			// event notification
-			_eventPubisher.EntityInserted(download);
         }
 
 		public virtual void UpdateDownload(Download download)

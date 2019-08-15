@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -13,7 +14,8 @@ namespace SmartStore.Core.IO
 	{
 		private string _root;
 		private string _publicPath;		// /Shop/base
-		private string _storagePath;    // C:\SMNET\base		
+		private string _storagePath;    // C:\SMNET\base	
+		private bool _isCloudStorage;	// When public URL is outside of current app	
 
 		public LocalFileSystem()
 			: this(string.Empty, string.Empty)
@@ -29,13 +31,18 @@ namespace SmartStore.Core.IO
 		{
 			basePath = basePath.EmptyNull();
 
-			var pathIsAbsolute = FileSystemHelper.IsFullPath(basePath);
+			var pathIsAbsolute = PathHelper.IsAbsolutePhysicalPath(basePath);
 
 			NormalizeStoragePath(ref basePath, pathIsAbsolute);
 
 			_publicPath = NormalizePublicPath(publicPath, basePath, pathIsAbsolute);
 
 			_root = basePath;
+		}
+
+		public bool IsCloudStorage
+		{
+			get { return _isCloudStorage; }
 		}
 
 		private void NormalizeStoragePath(ref string basePath, bool basePathIsAbsolute)
@@ -66,7 +73,12 @@ namespace SmartStore.Core.IO
 			{
 				if (publicPath.IsEmpty() || (!publicPath.StartsWith("~/") && !publicPath.IsWebUrl(true)))
 				{
-					throw new ArgumentException("When the base path is a fully qualified path, the public path must not be empty, and either be a fully qualified URL or a virtual path (e.g.: ~/Media)", nameof(publicPath));
+					var streamMedia = CommonHelper.GetAppSetting<bool>("sm:StreamRemoteMedia", true);
+					if (!streamMedia)
+					{
+						throw new ArgumentException(@"When the base path is a fully qualified path and remote media streaming is disabled, 
+													the public path must not be empty, and either be a fully qualified URL or a virtual path (e.g.: ~/Media)", nameof(publicPath));
+					}		
 				}
 			}
 
@@ -80,11 +92,13 @@ namespace SmartStore.Core.IO
 				return appVirtualPath + publicPath.Substring(1);
 			}
 
-			if (publicPath.IsEmpty())
+			if (publicPath.IsEmpty() && !basePathIsAbsolute)
 			{
 				// > /MyAppRoot/Media
 				return appVirtualPath + basePath;
 			}
+
+			_isCloudStorage = true;
 
 			return publicPath;
 		}
@@ -124,7 +138,7 @@ namespace SmartStore.Core.IO
 							 : path.TrimStart('/', '\\');
 		}
 
-		public string GetPublicUrl(string path)
+		public string GetPublicUrl(string path, bool forCloud = false)
 		{
 			return MapPublic(path);
 		}
@@ -160,23 +174,12 @@ namespace SmartStore.Core.IO
 		public IFile GetFile(string path)
 		{
 			var fileInfo = new FileInfo(MapStorage(path));
-			if (!fileInfo.Exists)
-			{
-				throw new ArgumentException("File " + path + " does not exist");
-			}
-
 			return new LocalFile(Fix(path), fileInfo);
 		}
 
 		public IFolder GetFolder(string path)
 		{
 			var directoryInfo = new DirectoryInfo(MapStorage(path));
-
-			if (!directoryInfo.Exists)
-			{
-				throw new ArgumentException("Folder " + path + " does not exist");
-			}
-
 			return new LocalFolder(Fix(path), directoryInfo);
 		}
 
@@ -199,12 +202,26 @@ namespace SmartStore.Core.IO
 			return new LocalFolder(Fix(folderPath), fileInfo.Directory);
 		}
 
-		public IEnumerable<string> SearchFiles(string path, string pattern)
+		public long CountFiles(string path, string pattern, Func<string, bool> predicate, bool deep = true)
 		{
-			// get relative from absolute path
+			var files = SearchFiles(path, pattern, deep).AsParallel();
+
+			if (predicate != null)
+			{
+				return files.Count(predicate);
+			}
+			else
+			{
+				return files.Count();
+			}
+		}
+
+		public IEnumerable<string> SearchFiles(string path, string pattern, bool deep = true)
+		{
+			// Get relative from absolute path
 			var index = _storagePath.EmptyNull().Length;
 
-			return Directory.EnumerateFiles(MapStorage(path), pattern, SearchOption.AllDirectories)
+			return Directory.EnumerateFiles(MapStorage(path), pattern, deep ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly)
 				.Select(x => x.Substring(index));
 		}
 
@@ -218,10 +235,9 @@ namespace SmartStore.Core.IO
 			}
 
 			return directoryInfo
-				.GetFiles()
+				.EnumerateFiles()
 				.Where(fi => !IsHidden(fi))
-				.Select<FileInfo, IFile>(fi => new LocalFile(Path.Combine(Fix(path), fi.Name), fi))
-				.ToList();
+				.Select<FileInfo, IFile>(fi => new LocalFile(Path.Combine(Fix(path), fi.Name), fi));
 		}
 
 		public IEnumerable<IFolder> ListFolders(string path)
@@ -245,10 +261,9 @@ namespace SmartStore.Core.IO
 			}
 
 			return directoryInfo
-				.GetDirectories()
+				.EnumerateDirectories()
 				.Where(di => !IsHidden(di))
-				.Select<DirectoryInfo, IFolder>(di => new LocalFolder(Path.Combine(Fix(path), di.Name), di))
-				.ToList();
+				.Select<DirectoryInfo, IFolder>(di => new LocalFolder(Path.Combine(Fix(path), di.Name), di));
 		}
 
 		private static bool IsHidden(FileSystemInfo di)
@@ -440,21 +455,23 @@ namespace SmartStore.Core.IO
 		internal static string ValidatePath(string basePath, string mappedPath)
 		{
 			bool valid = false;
+			string error = null;
 
 			try
 			{
 				// Check that we are indeed within the storage directory boundaries
 				valid = Path.GetFullPath(mappedPath).StartsWith(Path.GetFullPath(basePath), StringComparison.OrdinalIgnoreCase);
 			}
-			catch
+			catch (Exception exception)
 			{
 				// Make sure that if invalid for medium trust we give a proper exception
 				valid = false;
+				error = exception.Message;
 			}
 
 			if (!valid)
 			{
-				throw new ArgumentException("Invalid path");
+				throw new ArgumentException($"{error ?? "Invalid path."} mappedPath: {mappedPath.NaIfEmpty()}");
 			}
 
 			return mappedPath;
@@ -465,6 +482,7 @@ namespace SmartStore.Core.IO
 		{
 			private readonly string _path;
 			private readonly FileInfo _fileInfo;
+			private Size? _dimensions;
 
 			public LocalFile(string path, FileInfo fileInfo)
 			{
@@ -477,9 +495,19 @@ namespace SmartStore.Core.IO
 				get { return _path; }
 			}
 
+			public string Directory
+			{
+				get { return _path.Substring(0, _path.Length - Name.Length); }
+			}
+
 			public string Name
 			{
 				get { return _fileInfo.Name; }
+			}
+
+			public string Title
+			{
+				get { return System.IO.Path.GetFileNameWithoutExtension(_fileInfo.Name); }
 			}
 
 			public long Size
@@ -489,12 +517,38 @@ namespace SmartStore.Core.IO
 
 			public DateTime LastUpdated
 			{
-				get { return _fileInfo.LastWriteTime; }
+				get { return _fileInfo.LastWriteTimeUtc; }
 			}
 
-			public string FileType
+			public string Extension
 			{
 				get { return _fileInfo.Extension; }
+			}
+
+			public Size Dimensions
+			{
+				get
+				{
+					if (_dimensions == null)
+					{
+						try
+						{
+							var mime = MimeTypes.MapNameToMimeType(_fileInfo.Name);
+							_dimensions = ImageHeader.GetDimensions(OpenRead(), mime, false);
+						}
+						catch
+						{
+							_dimensions = new Size();
+						}
+					}
+
+					return _dimensions.Value;
+				}
+			}
+
+			public bool Exists
+			{
+				get { return _fileInfo.Exists; }
 			}
 
 			public Stream OpenRead()
@@ -541,12 +595,17 @@ namespace SmartStore.Core.IO
 
 			public DateTime LastUpdated
 			{
-				get { return _directoryInfo.LastWriteTime; }
+				get { return _directoryInfo.LastWriteTimeUtc; }
 			}
 
 			public long Size
 			{
 				get { return GetDirectorySize(_directoryInfo); }
+			}
+
+			public bool Exists
+			{
+				get { return _directoryInfo.Exists; }
 			}
 
 			public IFolder Parent

@@ -6,39 +6,59 @@ using System.Web.Routing;
 using System.Text.RegularExpressions;
 using SmartStore.Utilities;
 using SmartStore.Core;
-using SmartStore.Web.Framework.Plugins;
 using SmartStore.Core.IO;
 using System.IO;
 using System.Web.Hosting;
 using System.Reflection;
+using SmartStore.Web.Framework.Theming;
+using SmartStore.Core.Infrastructure;
+using SmartStore.Core.Events;
+using SmartStore.Core.Data;
+using SmartStore.Collections;
 
 namespace SmartStore.Web.Framework
 {
+	/// <remarks>
+	/// Request event sequence:
+	/// - BeginRequest
+	/// - AuthenticateRequest 
+	/// - PostAuthenticateRequest 
+	/// - AuthorizeRequest 
+	/// - PostAuthorizeRequest 
+	/// - ResolveRequestCache 
+	/// - PostResolveRequestCache 
+	/// - MapRequestHandler 
+	/// - PostMapRequestHandler 
+	/// - AcquireRequestState 
+	/// - PostAcquireRequestState
+	/// - PreRequestHandlerExecute 
+	/// - PostRequestHandlerExecute 
+	/// - ReleaseRequestState 
+	/// - PostReleaseRequestState 
+	/// - UpdateRequestCache 
+	/// - PostUpdateRequestCache  
+	/// - LogRequest 
+	/// - PostLogRequest  
+	/// - EndRequest  
+	/// - PreSendRequestHeaders  
+	/// - PreSendRequestContent
+	/// </remarks>
 	public class SmartUrlRoutingModule : IHttpModule
 	{
 		private static readonly object _contextKey = new object();
-		private static readonly ConcurrentBag<RoutablePath> _routes = new ConcurrentBag<RoutablePath>();
 
-		public void Init(HttpApplication application)
+		private static readonly ICollection<Action<HttpApplication>> _actions = 
+			new SyncedCollection<Action<HttpApplication>>(new List<Action<HttpApplication>>()) { ReadLockFree = true };
+
+		private static readonly ICollection<RoutablePath> _routes = 
+			new SyncedCollection<RoutablePath>(new List<RoutablePath>()) { ReadLockFree = true };
+
+		static SmartUrlRoutingModule()
 		{
-			if (application.Context.Items[_contextKey] == null)
-			{
-				application.Context.Items[_contextKey] = _contextKey;
-
-				if (CommonHelper.IsDevEnvironment && HttpContext.Current.IsDebuggingEnabled)
-				{
-					// Handle plugin static file in DevMode
-					application.PostAuthorizeRequest += (s, e) => PostAuthorizeRequest(new HttpContextWrapper(((HttpApplication)s).Context));
-					application.PreSendRequestHeaders += (s, e) => PreSendRequestHeaders(new HttpContextWrapper(((HttpApplication)s).Context));
-				}
-				
-				application.PostResolveRequestCache += (s, e) => PostResolveRequestCache(new HttpContextWrapper(((HttpApplication)s).Context));
-
-				StopSubDirMonitoring();
-			}			
+			StopSubDirMonitoring();
 		}
 
-		private void StopSubDirMonitoring()
+		private static void StopSubDirMonitoring()
 		{
 			try
 			{
@@ -54,6 +74,46 @@ namespace SmartStore.Web.Framework
 			catch { }
 		}
 
+		public void Init(HttpApplication application)
+		{
+			if (!DataSettings.DatabaseIsInstalled())
+				return;
+
+			if (application.Context.Items[_contextKey] == null)
+			{
+				application.Context.Items[_contextKey] = _contextKey;
+
+				if (CommonHelper.IsDevEnvironment && HttpContext.Current.IsDebuggingEnabled)
+				{
+					// Handle plugin static file in DevMode
+					application.PostAuthorizeRequest += (s, e) => PostAuthorizeRequest(new HttpContextWrapper(((HttpApplication)s).Context));
+					application.PreSendRequestHeaders += (s, e) => PreSendRequestHeaders(new HttpContextWrapper(((HttpApplication)s).Context));
+				}	
+
+				application.PostResolveRequestCache += (s, e) => PostResolveRequestCache(new HttpContextWrapper(((HttpApplication)s).Context));
+
+				// Publish event to give plugins the chance to register custom event handlers for the request lifecycle.
+				foreach (var action in _actions)
+				{
+					action(application);
+				}
+
+				// Set app to fully initialized state on very first request
+				EngineContext.Current.IsFullyInitialized = true;
+			}
+		}
+
+		/// <summary>
+		///  Registers an action that is called on application init. Call this to register HTTP request lifecycle callbacks / event handlers.
+		/// </summary>
+		/// <param name="action">Action</param>
+		public static void RegisterAction(Action<HttpApplication> action)
+		{
+			Guard.NotNull(action, nameof(action));
+
+			_actions.Add(action);
+		}
+
 		/// <summary>
 		/// Registers a path pattern which should be handled by the <see cref="UrlRoutingModule"/>
 		/// </summary>
@@ -62,7 +122,7 @@ namespace SmartStore.Web.Framework
 		/// <remarks>
 		/// For performance reasons SmartStore.NET is configured to serve static files (files with extensions other than those mapped to managed handlers)
 		/// through the native <c>StaticFileModule</c>. This method lets you define exceptions to this default rule: every path registered as routable gets
-		/// handled by the <see cref="UrlRoutingModule"/> and therefore enables dynamic processing of (physically non-existant) static files.
+		/// handled by the <see cref="UrlRoutingModule"/> and therefore enables dynamic processing of (physically non-existent) static files.
 		/// </remarks>
 		public static void RegisterRoutablePath(string path, string verb = ".*")
 		{
@@ -104,10 +164,10 @@ namespace SmartStore.Web.Framework
 			if (request == null)
 				return;
 
-			if (IsPluginPath(request) && WebHelper.IsStaticResourceRequested(request))
+			if (IsExtensionPath(request) && WebHelper.IsStaticResourceRequested(request))
 			{
-				// We're in debug mode and in dev environment, so we can be sure that 'PluginDebugViewVirtualPathProvider' is running
-				var file = HostingEnvironment.VirtualPathProvider.GetFile(request.AppRelativeCurrentExecutionFilePath) as DebugPluginVirtualFile;
+				// We're in debug mode and in dev environment
+				var file = HostingEnvironment.VirtualPathProvider.GetFile(request.AppRelativeCurrentExecutionFilePath) as DebugVirtualFile;
 				if (file != null)
 				{
 					context.Items["DebugFile"] = file;
@@ -122,7 +182,7 @@ namespace SmartStore.Web.Framework
 			if (context?.Response == null)
 				return;
 
-			var file = context.Items?["DebugFile"] as DebugPluginVirtualFile;
+			var file = context.Items?["DebugFile"] as DebugVirtualFile;
 			if (file != null)
 			{
 				context.Response.AddFileDependency(file.PhysicalPath);
@@ -155,9 +215,10 @@ namespace SmartStore.Web.Framework
 			}	
 		}
 
-		private bool IsPluginPath(HttpRequestBase request)
+		private bool IsExtensionPath(HttpRequestBase request)
 		{
-			var result = request.AppRelativeCurrentExecutionFilePath.StartsWith("~/Plugins/", StringComparison.InvariantCultureIgnoreCase);
+			var path = request.AppRelativeCurrentExecutionFilePath.ToLower();
+			var result = path.StartsWith("~/plugins/") || path.StartsWith("~/themes/");
 			return result;
 		}
 

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Collections;
 
 namespace SmartStore
 {
@@ -14,9 +15,10 @@ namespace SmartStore
 
         public static string AssemblyQualifiedNameWithoutVersion(this Type type)
         {
-			Guard.NotNull(type, nameof(type));
+			if (type == null)
+				throw new ArgumentNullException(nameof(type));
 
-	        if (type.AssemblyQualifiedName != null)
+			if (type.AssemblyQualifiedName != null)
 	        {
 		        var strArray = type.AssemblyQualifiedName.Split(new char[] { ',' });
 		        return string.Format("{0}, {1}", strArray[0].Trim(), strArray[1].Trim());
@@ -25,13 +27,39 @@ namespace SmartStore
 	        return null;
         }
 
-        public static bool IsSequenceType(this Type seqType)
+		public static bool IsNumericType(this Type type)
+		{
+			switch (Type.GetTypeCode(type))
+			{
+				case TypeCode.Byte:
+				case TypeCode.SByte:
+				case TypeCode.UInt16:
+				case TypeCode.UInt32:
+				case TypeCode.UInt64:
+				case TypeCode.Int16:
+				case TypeCode.Int32:
+				case TypeCode.Int64:
+				case TypeCode.Decimal:
+				case TypeCode.Double:
+				case TypeCode.Single:
+					return true;
+				case TypeCode.Object:
+					if (type.IsNullable(out var innerType))
+					{
+						return innerType.IsNumericType();
+					}
+					return false;
+				default:
+					return false;
+			}
+		}
+
+		public static bool IsSequenceType(this Type type)
         {
-            return (
-                (((seqType != typeof(string))
-                && (seqType != typeof(byte[])))
-                && (seqType != typeof(char[])))
-                && (FindIEnumerable(seqType) != null));
+			if (type == typeof(string))
+				return false;
+
+			return type.IsArray || typeof(IEnumerable).IsAssignableFrom(type);
         }
 
         public static bool IsPredefinedSimpleType(this Type type)
@@ -40,6 +68,7 @@ namespace SmartStore
             {
                 return true;
             }
+
             if (type.IsEnum)
             {
                 return true;
@@ -54,6 +83,7 @@ namespace SmartStore
             {
                 return !type.IsPredefinedSimpleType();
             }
+
             return false;
         }
 
@@ -81,7 +111,12 @@ namespace SmartStore
             return true;
         }
 
-        public static bool IsInteger(this Type type)
+		public static bool IsPlainObjectType(this Type type)
+		{
+			return type.IsClass && !type.IsSequenceType() && !type.IsPredefinedType();
+		}
+
+		public static bool IsInteger(this Type type)
         {
             switch (Type.GetTypeCode(type))
             {
@@ -99,16 +134,24 @@ namespace SmartStore
             }
         }
 
-        public static bool IsNullable(this Type type)
+        public static bool IsNullable(this Type type, out Type wrappedType)
         {
-            return type != null && type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>);
+			wrappedType = null;
+
+			if (type != null && type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+			{
+				wrappedType = type.GetGenericArguments()[0];
+			}
+
+			return false;
         }
 
         public static bool IsConstructable(this Type type)
         {
-            Guard.NotNull(type, "type");
+			if (type == null)
+				throw new ArgumentNullException(nameof(type));
 
-            if (type.IsAbstract || type.IsInterface || type.IsArray || type.IsGenericTypeDefinition || type == typeof(void))
+			if (type.IsAbstract || type.IsInterface || type.IsArray || type.IsGenericTypeDefinition || type == typeof(void))
                 return false;
 
             if (!HasDefaultConstructor(type))
@@ -133,15 +176,17 @@ namespace SmartStore
                     }
                 }
             }
+
             return false;
         }
 
         [DebuggerStepThrough]
         public static bool HasDefaultConstructor(this Type type)
         {
-            Guard.NotNull(type, nameof(type));
+			if (type == null)
+				throw new ArgumentNullException(nameof(type));
 
-            if (type.IsValueType)
+			if (type.IsValueType)
                 return true;
 
             return type.GetConstructors(BindingFlags.Instance | BindingFlags.Public)
@@ -150,16 +195,18 @@ namespace SmartStore
 
         public static bool IsSubClass(this Type type, Type check)
         {
-            Type implementingType;
-            return IsSubClass(type, check, out implementingType);
-        }
+			return IsSubClass(type, check, out Type implementingType);
+		}
 
         public static bool IsSubClass(this Type type, Type check, out Type implementingType)
         {
-            Guard.NotNull(type, "type");
-            Guard.NotNull(check, "check");
+			if (type == null)
+				throw new ArgumentNullException(nameof(type));
 
-            return IsSubClassInternal(type, type, check, out implementingType);
+			if (check == null)
+				throw new ArgumentNullException(nameof(check));
+
+			return IsSubClassInternal(type, type, check, out implementingType);
         }
 
         private static bool IsSubClassInternal(Type initialType, Type currentType, Type check, out Type implementingType)
@@ -209,11 +256,12 @@ namespace SmartStore
         /// </summary>
         public static Type GetNonNullableType(this Type type)
         {
-            if (!IsNullable(type))
+            if (!IsNullable(type, out var wrappedType))
             {
                 return type;
             }
-            return type.GetGenericArguments()[0];
+
+            return wrappedType;
         }
 
 		/// <summary>
@@ -233,6 +281,7 @@ namespace SmartStore
                 {
                     throw Error.MoreThanOneElement();
                 }
+
                 return (TAttribute)attributes[0];
             }
 
@@ -294,6 +343,7 @@ namespace SmartStore
                     }
                 }
             }
+
             attributes.AddRange(GetAttributes<TAttribute>(member, inherits));
             return attributes.ToArray();
         }
@@ -341,8 +391,10 @@ namespace SmartStore
         {
             if (seqType == null || seqType == typeof(string))
                 return null;
+
             if (seqType.IsArray)
                 return typeof(IEnumerable<>).MakeGenericType(seqType.GetElementType());
+
             if (seqType.IsGenericType)
             {
 				var args = seqType.GetGenericArguments();
@@ -353,6 +405,7 @@ namespace SmartStore
                         return ienum;
                 }
             }
+
             Type[] ifaces = seqType.GetInterfaces();
             if (ifaces.Length > 0)
             {
@@ -363,8 +416,10 @@ namespace SmartStore
                         return ienum;
                 }
             }
+
             if (seqType.BaseType != null && seqType.BaseType != typeof(object))
                 return FindIEnumerable(seqType.BaseType);
+
             return null;
         }
     }

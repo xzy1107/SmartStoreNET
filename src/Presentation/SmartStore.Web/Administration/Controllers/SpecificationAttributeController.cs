@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Web.Mvc;
 using SmartStore.Admin.Models.Catalog;
-using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Common;
 using SmartStore.Core.Logging;
@@ -18,7 +17,7 @@ using Telerik.Web.Mvc;
 
 namespace SmartStore.Admin.Controllers
 {
-    [AdminAuthorize]
+	[AdminAuthorize]
     public class SpecificationAttributeController : AdminControllerBase
     {
         #region Fields
@@ -334,18 +333,6 @@ namespace SmartStore.Admin.Controllers
 			return Json(new { Result = true });
 		}
 
-		[HttpPost]
-		public ActionResult ProductMappingEdit(int specificationAttributeId, string field, bool value)
-		{
-			_specificationAttributeService.UpdateProductSpecificationMapping(specificationAttributeId, field, value);
-
-			return Json(new
-			{
-				message = _localizationService.GetResource("Admin.Common.DataEditSuccess"),
-				notificationType = "success"
-			});
-		}
-
         #endregion
 
         #region Specification attribute options
@@ -510,18 +497,14 @@ namespace SmartStore.Admin.Controllers
             return OptionList(specificationAttributeId, command);
         }
 
-        //ajax
+        // Ajax.
         [AcceptVerbs(HttpVerbs.Get)]
-        public ActionResult GetOptionsByAttributeId(string attributeId)
+        public ActionResult GetOptionsByAttributeId(int attributeId)
         {
             if (!_permissionService.Authorize(StandardPermissionProvider.ManageCatalog))
                 return AccessDeniedView();
 
-            // This action method gets called via an ajax request
-            if (string.IsNullOrEmpty(attributeId))
-                throw new ArgumentNullException("attributeId");
-
-            var options = _specificationAttributeService.GetSpecificationAttributeOptionsBySpecificationAttribute(Convert.ToInt32(attributeId));
+            var options = _specificationAttributeService.GetSpecificationAttributeOptionsBySpecificationAttribute(attributeId);
             var result = 
 				from o in options
 				select new { id = o.Id, name = o.Name, text = o.Name };

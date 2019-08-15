@@ -1,12 +1,14 @@
 ﻿using System;
 using System.Linq;
+using System.Net;
 using System.Web;
 using System.Web.Hosting;
 using System.Web.Mvc;
 using System.Web.Optimization;
 using System.Web.Routing;
-using System.Web.Security;
 using System.Web.WebPages;
+using AutoMapper;
+using FluentValidation;
 using FluentValidation.Mvc;
 using JavaScriptEngineSwitcher.Core;
 using JavaScriptEngineSwitcher.Msie;
@@ -15,16 +17,16 @@ using SmartStore.Core;
 using SmartStore.Core.Data;
 using SmartStore.Core.Events;
 using SmartStore.Core.Infrastructure;
-using SmartStore.Services.Customers;
+using SmartStore.Core.Themes;
 using SmartStore.Services.Tasks;
-using SmartStore.Utilities;
+using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Bundling;
 using SmartStore.Web.Framework.Filters;
 using SmartStore.Web.Framework.Localization;
 using SmartStore.Web.Framework.Modelling;
-using SmartStore.Web.Framework.Plugins;
 using SmartStore.Web.Framework.Routing;
 using SmartStore.Web.Framework.Theming;
+using SmartStore.Web.Framework.Theming.Assets;
 using SmartStore.Web.Framework.Validators;
 
 namespace SmartStore.Web
@@ -34,16 +36,16 @@ namespace SmartStore.Web
 
 	public class MvcApplication : System.Web.HttpApplication
 	{
-		public static void RegisterGlobalFilters(GlobalFilterCollection filters)
+		public static void RegisterGlobalFilters(GlobalFilterCollection filters, IEngine engine)
 		{
-			var eventPublisher = EngineContext.Current.Resolve<IEventPublisher>();
+			var eventPublisher = engine.Resolve<IEventPublisher>();
 			eventPublisher.Publish(new AppRegisterGlobalFiltersEvent
 			{
 				Filters = filters
 			});
 		}
 
-		public static void RegisterRoutes(RouteCollection routes, bool databaseInstalled = true)
+		public static void RegisterRoutes(RouteCollection routes, IEngine engine, bool databaseInstalled = true)
 		{
 			//routes.IgnoreRoute("favicon.ico");
 			routes.IgnoreRoute("{resource}.axd/{*pathInfo}");
@@ -51,20 +53,36 @@ namespace SmartStore.Web
 			routes.IgnoreRoute(".db/{*virtualpath}");
 
 			// register routes (core, admin, plugins, etc)
-			var routePublisher = EngineContext.Current.Resolve<IRoutePublisher>();
+			var routePublisher = engine.Resolve<IRoutePublisher>();
 			routePublisher.RegisterRoutes(routes);
 		}
 
-		public static void RegisterBundles(BundleCollection bundles)
+		public static void RegisterBundles(BundleCollection bundles, IEngine engine)
 		{
 			// register custom bundles
-			var bundlePublisher = EngineContext.Current.Resolve<IBundlePublisher>();
+			var bundlePublisher = engine.Resolve<IBundlePublisher>();
 			bundlePublisher.RegisterBundles(bundles);
+		}
+
+		public static void RegisterClassMaps(IEngine engine)
+		{
+			// register AutoMapper maps
+			var profileTypes = engine.Resolve<ITypeFinder>().FindClassesOfType<Profile>();
+
+			if (profileTypes.Any())
+			{
+				Mapper.Initialize(cfg => {
+					foreach (var profileType in profileTypes)
+					{
+						cfg.AddProfile(profileType);
+					}
+				});
+			}
 		}
 
 		public static void RegisterJsEngines()
 		{
-			JsEngineSwitcher engineSwitcher = JsEngineSwitcher.Instance;
+			var engineSwitcher = JsEngineSwitcher.Current;
 			engineSwitcher.EngineFactories
 				.AddV8()
 				.AddMsie(new MsieSettings
@@ -78,6 +96,10 @@ namespace SmartStore.Web
 
 		protected void Application_Start()
 		{
+			// SSL & TLS
+			ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
+			ServicePointManager.ServerCertificateValidationCallback += (sender, cert, chain, errors) => true;
+			
 			// we use our own mobile devices support (".Mobile" is reserved). that's why we disable it.
 			var mobileDisplayMode = DisplayModeProvider.Instance.Modes.FirstOrDefault(x => x.DisplayModeId == DisplayModeProvider.MobileDisplayModeId);
 			if (mobileDisplayMode != null)
@@ -92,7 +114,7 @@ namespace SmartStore.Web
 			}
 
 			// Initialize engine context
-			EngineContext.Initialize(false);
+			var engine = EngineContext.Initialize(false);
 
 			// Model binders
 			ModelBinders.Binders.DefaultBinder = new SmartModelBinder();
@@ -104,13 +126,10 @@ namespace SmartStore.Web
 			AreaRegistration.RegisterAllAreas();
 
 			// Fluent validation
-			FluentValidationModelValidatorProvider.Configure(x =>
-			{
-				x.ValidatorFactory = new SmartValidatorFactory();
-			});
-
+			InitializeFluentValidator();
+			
 			// Routes
-			RegisterRoutes(RouteTable.Routes, installed);
+			RegisterRoutes(RouteTable.Routes, engine, installed);
 
 			// localize MVC resources
 			ClientDataTypeModelValidatorProvider.ResourceClassKey = "MvcLocalization";
@@ -120,37 +139,77 @@ namespace SmartStore.Web
 			// Register JsEngine
 			RegisterJsEngines();
 
+			// VPPs
+			RegisterVirtualPathProviders();
+
 			if (installed)
 			{
 				// register our themeable razor view engine we use
 				ViewEngines.Engines.Add(new ThemeableRazorViewEngine());
 
 				// Global filters
-				RegisterGlobalFilters(GlobalFilters.Filters);
+				RegisterGlobalFilters(GlobalFilters.Filters, engine);
 
 				// Bundles
-				RegisterBundles(BundleTable.Bundles);
-
-				// register virtual path provider for theming (file inheritance & variables handling)
-				HostingEnvironment.RegisterVirtualPathProvider(new ThemingVirtualPathProvider(HostingEnvironment.VirtualPathProvider));
-				
-				// register plugin debug view virtual path provider
-				if (HttpContext.Current.IsDebuggingEnabled && CommonHelper.IsDevEnvironment)
-				{
-					HostingEnvironment.RegisterVirtualPathProvider(new PluginDebugViewVirtualPathProvider());
-				}
-
-				BundleTable.VirtualPathProvider = HostingEnvironment.VirtualPathProvider;
+				RegisterBundles(BundleTable.Bundles, engine);
 
 				// "throw-away" filter for task scheduler initialization (the filter removes itself when processed)
-				GlobalFilters.Filters.Add(new InitializeSchedulerFilter());
+				GlobalFilters.Filters.Add(new InitializeSchedulerFilter(), int.MinValue);
+
+				// register AutoMapper class maps
+				RegisterClassMaps(engine);
 			}
 			else
 			{
 				// app not installed
 
 				// Install filter
-				GlobalFilters.Filters.Add(new HandleInstallFilter());
+				GlobalFilters.Filters.Add(new HandleInstallFilter(), -1000);
+			}
+		}
+
+		private static void InitializeFluentValidator()
+		{
+			FluentValidationModelValidatorProvider.Configure(x =>
+			{
+				x.ValidatorFactory = new SmartValidatorFactory();
+			});
+
+			// Setup custom resources
+			ValidatorOptions.LanguageManager = new ValidatorLanguageManager();
+
+			// Setup our custom DisplayName handling
+			var originalDisplayNameResolver = ValidatorOptions.DisplayNameResolver;
+			ValidatorOptions.DisplayNameResolver = (type, member, expression) =>
+			{
+				string name = null;
+
+				if (HostingEnvironment.IsHosted && member != null)
+				{
+					var attr = member.GetAttribute<SmartResourceDisplayName>(true);
+					if (attr != null)
+					{
+						name = attr.DisplayName;
+					}
+				}
+
+				return name ?? originalDisplayNameResolver.Invoke(type, member, expression);
+			};
+		}
+
+		private void RegisterVirtualPathProviders()
+		{
+			var vppSystem = HostingEnvironment.VirtualPathProvider;
+
+			// register virtual path provider for bundling (Sass & variables handling)
+			BundleTable.VirtualPathProvider = new BundlingVirtualPathProvider(vppSystem);
+
+			if (DataSettings.DatabaseIsInstalled())
+			{
+				var vppTheme = new ThemingVirtualPathProvider(vppSystem);
+
+				// register virtual path provider for theming (file inheritance handling etc.)
+				HostingEnvironment.RegisterVirtualPathProvider(vppTheme);
 			}
 		}
 
@@ -184,21 +243,6 @@ namespace SmartStore.Web
 			}
 
 			return base.GetVaryByCustomString(context, custom);
-		}
-
-		public void AnonymousIdentification_Creating(object sender, AnonymousIdentificationEventArgs args)
-		{
-			try
-			{
-				var customerService = EngineContext.Current.Resolve<ICustomerService>();
-				var customer = customerService.FindGuestCustomerByClientIdent(maxAgeSeconds: 180);
-				if (customer != null)
-				{
-					// We found our anonymous visitor: don't let ASP.NET create a new id.
-					args.AnonymousID = customer.CustomerGuid.ToString();
-				}
-			}
-			catch { }
 		}
 	}
 }

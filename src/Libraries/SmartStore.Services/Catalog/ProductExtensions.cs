@@ -1,20 +1,18 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using SmartStore.Core;
 using SmartStore.Core.Domain.Catalog;
+using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Directory;
-using SmartStore.Core.Domain.Media;
 using SmartStore.Core.Infrastructure;
 using SmartStore.Services.Directory;
 using SmartStore.Services.Localization;
-using SmartStore.Services.Media;
 using SmartStore.Services.Seo;
 using SmartStore.Services.Tax;
 
 namespace SmartStore.Services.Catalog
 {
-	public static class ProductExtensions
+    public static class ProductExtensions
     {
 		public static ProductVariantAttributeCombination MergeWithCombination(this Product product, string selectedAttributes)
         {
@@ -28,12 +26,16 @@ namespace SmartStore.Services.Catalog
 			if (selectedAttributes.IsEmpty())
 				return null;
 
-			// let's find appropriate record
+			// Let's find appropriate record.
 			var combination = productAttributeParser.FindProductVariantAttributeCombination(product.Id, selectedAttributes);
 
-			if (combination != null && combination.IsActive)
+            if (combination != null && combination.IsActive)
             {
-				product.MergeWithCombination(combination);
+                product.MergeWithCombination(combination);
+            }
+            else if (product.MergedDataValues != null)
+            {
+                product.MergedDataValues.Clear();
             }
 
 			return combination;
@@ -43,48 +45,50 @@ namespace SmartStore.Services.Catalog
 		{
 			Guard.NotNull(product, "product");
 
-			if (product.MergedDataValues != null)
-				product.MergedDataValues.Clear();
+			var values = product.MergedDataValues;
+
+			if (values != null)
+				values.Clear();
 
 			if (combination == null)
 				return;
 
-			if (product.MergedDataValues == null)
-				product.MergedDataValues = new Dictionary<string, object>();
+			if (values == null)
+				product.MergedDataValues = values = new Dictionary<string, object>();
 
-            if (ManageInventoryMethod.ManageStockByAttributes == (ManageInventoryMethod)product.ManageInventoryMethodId)
-            {
-                product.MergedDataValues.Add("StockQuantity", combination.StockQuantity);
-				product.MergedDataValues.Add("BackorderModeId", combination.AllowOutOfStockOrders ? (int)BackorderMode.AllowQtyBelow0 : (int)BackorderMode.NoBackorders);
-            }
+			if (ManageInventoryMethod.ManageStockByAttributes == (ManageInventoryMethod)product.ManageInventoryMethodId)
+			{
+				values.Add("StockQuantity", combination.StockQuantity);
+				values.Add("BackorderModeId", combination.AllowOutOfStockOrders ? (int)BackorderMode.AllowQtyBelow0 : (int)BackorderMode.NoBackorders);
+			}
 
 			if (combination.Sku.HasValue())
-				product.MergedDataValues.Add("Sku", combination.Sku);
+				values.Add("Sku", combination.Sku);
 			if (combination.Gtin.HasValue())
-				product.MergedDataValues.Add("Gtin", combination.Gtin);
+				values.Add("Gtin", combination.Gtin);
 			if (combination.ManufacturerPartNumber.HasValue())
-				product.MergedDataValues.Add("ManufacturerPartNumber", combination.ManufacturerPartNumber);
+				values.Add("ManufacturerPartNumber", combination.ManufacturerPartNumber);
 
 			if (combination.Price.HasValue)
-				product.MergedDataValues.Add("Price", combination.Price.Value);
+				values.Add("Price", combination.Price.Value);
 
 			if (combination.DeliveryTimeId.HasValue && combination.DeliveryTimeId.Value > 0)
-				product.MergedDataValues.Add("DeliveryTimeId", combination.DeliveryTimeId);
+				values.Add("DeliveryTimeId", combination.DeliveryTimeId);
 
 			if (combination.QuantityUnitId.HasValue && combination.QuantityUnitId.Value > 0)
-				product.MergedDataValues.Add("QuantityUnitId", combination.QuantityUnitId);
+				values.Add("QuantityUnitId", combination.QuantityUnitId);
 
 			if (combination.Length.HasValue)
-				product.MergedDataValues.Add("Length", combination.Length.Value);
+				values.Add("Length", combination.Length.Value);
 			if (combination.Width.HasValue)
-				product.MergedDataValues.Add("Width", combination.Width.Value);
+				values.Add("Width", combination.Width.Value);
 			if (combination.Height.HasValue)
-				product.MergedDataValues.Add("Height", combination.Height.Value);
+				values.Add("Height", combination.Height.Value);
 
 			if (combination.BasePriceAmount.HasValue)
-				product.MergedDataValues.Add("BasePriceAmount", combination.BasePriceAmount);
+				values.Add("BasePriceAmount", combination.BasePriceAmount);
 			if (combination.BasePriceBaseAmount.HasValue)
-				product.MergedDataValues.Add("BasePriceBaseAmount", combination.BasePriceBaseAmount);
+				values.Add("BasePriceBaseAmount", combination.BasePriceBaseAmount);
 		}
 
 		public static IList<int> GetAllCombinationPictureIds(this IEnumerable<ProductVariantAttributeCombination> combinations)
@@ -100,12 +104,11 @@ namespace SmartStore.Services.Catalog
 
 				if (data.Count > 0)
 				{
-					int id;
 					var ids = string.Join(",", data).SplitSafe(",").Distinct();
 
 					foreach (string str in ids)
 					{
-						if (int.TryParse(str, out id) && !pictureIds.Exists(i => i == id))
+						if (int.TryParse(str, out var id) && !pictureIds.Exists(i => i == id))
 							pictureIds.Add(id);
 					}
 				}
@@ -141,24 +144,12 @@ namespace SmartStore.Services.Catalog
             int productId1, int productId2)
         {
             foreach (CrossSellProduct crossSellProduct in source)
+            {
                 if (crossSellProduct.ProductId1 == productId1 && crossSellProduct.ProductId2 == productId2)
                     return crossSellProduct;
+            }
+
             return null;
-        }
-
-        /// <summary>
-        /// Get a default picture of a product 
-        /// </summary>
-        /// <param name="source">Source</param>
-        /// <param name="pictureService">Picture service</param>
-        /// <returns>Product picture</returns>
-        public static Picture GetDefaultProductPicture(this Product source, IPictureService pictureService)
-        {
-			Guard.NotNull(source, nameof(source));
-			Guard.NotNull(pictureService, nameof(pictureService));
-
-            var picture = pictureService.GetPicturesByProductId(source.Id, 1).FirstOrDefault();
-            return picture;
         }
 
 		public static bool IsAvailableByStock(this Product product)
@@ -167,9 +158,12 @@ namespace SmartStore.Services.Catalog
 
 			if (product.ManageInventoryMethod == ManageInventoryMethod.ManageStock || product.ManageInventoryMethod == ManageInventoryMethod.ManageStockByAttributes)
 			{
-				if (product.StockQuantity <= 0 && product.BackorderMode == BackorderMode.NoBackorders)
-					return false;
+                if (product.StockQuantity <= 0 && product.BackorderMode == BackorderMode.NoBackorders)
+                {
+                    return false;
+                }
 			}
+
 			return true;
 		}
 
@@ -181,13 +175,10 @@ namespace SmartStore.Services.Catalog
         /// <returns>The stock message</returns>
         public static string FormatStockMessage(this Product product, ILocalizationService localizationService)
         {
-			if (product == null)
-				throw new ArgumentNullException("product");
+			Guard.NotNull(product, nameof(product));
+			Guard.NotNull(localizationService, nameof(localizationService));
 
-            if (localizationService == null)
-                throw new ArgumentNullException("localizationService");
-
-            string stockMessage = string.Empty;
+			string stockMessage = string.Empty;
 
             if ((product.ManageInventoryMethod == ManageInventoryMethod.ManageStock || product.ManageInventoryMethod == ManageInventoryMethod.ManageStockByAttributes)
                 && product.DisplayStockAvailability)
@@ -214,8 +205,9 @@ namespace SmartStore.Services.Catalog
         public static bool DisplayDeliveryTimeAccordingToStock(this Product product, CatalogSettings catalogSettings)
         {
 			Guard.NotNull(product, nameof(product));
+            Guard.NotNull(catalogSettings, nameof(catalogSettings));
 
-			if (product.ManageInventoryMethod == ManageInventoryMethod.ManageStock || product.ManageInventoryMethod == ManageInventoryMethod.ManageStockByAttributes)
+            if (product.ManageInventoryMethod == ManageInventoryMethod.ManageStock || product.ManageInventoryMethod == ManageInventoryMethod.ManageStockByAttributes)
 			{
 				if (catalogSettings.DeliveryTimeIdForEmptyStock.HasValue && product.StockQuantity <= 0)
 					return true;
@@ -226,14 +218,47 @@ namespace SmartStore.Services.Catalog
             return true;
         }
 
-
-        public static bool ProductTagExists(this Product product, int productTagId)
+        public static int? GetDeliveryTimeIdAccordingToStock(this Product product, CatalogSettings catalogSettings)
         {
-            if (product == null)
-                throw new ArgumentNullException("product");
+            Guard.NotNull(catalogSettings, nameof(catalogSettings));
 
-            bool result = product.ProductTags.ToList().Find(pt => pt.Id == productTagId) != null;
-            return result;
+            if (product == null)
+            {
+                return null;
+            }
+
+            if ((product.ManageInventoryMethod == ManageInventoryMethod.ManageStock || product.ManageInventoryMethod == ManageInventoryMethod.ManageStockByAttributes)
+                && catalogSettings.DeliveryTimeIdForEmptyStock.HasValue
+                && product.StockQuantity <= 0)
+            {
+                return catalogSettings.DeliveryTimeIdForEmptyStock.Value;
+            }
+
+            return product.DeliveryTimeId;
+        }
+
+        /// <summary>
+        /// Indicates whether the product is labeled as NEW.
+        /// </summary>
+        /// <param name="product">Product entity</param>
+        /// <param name="catalogSettings">Catalog settings</param>
+        /// <returns>Whether the product is labeled as NEW</returns>
+        public static bool IsNew(this Product product, CatalogSettings catalogSettings)
+		{
+			if (catalogSettings.LabelAsNewForMaxDays.HasValue)
+			{
+				return ((DateTime.UtcNow - product.CreatedOnUtc).Days <= catalogSettings.LabelAsNewForMaxDays.Value);
+			}
+
+			return false;
+		}
+
+		public static bool ProductTagExists(this Product product, int productTagId)
+        {
+			Guard.NotNull(product, nameof(product));
+
+			var result = product.ProductTags.Any(x => x.Id == productTagId);
+			return result;
         }
 
         /// <summary>
@@ -243,10 +268,9 @@ namespace SmartStore.Services.Catalog
         /// <returns>Result</returns>
 		public static int[] ParseAllowedQuatities(this Product product)
         {
-			if (product == null)
-				throw new ArgumentNullException("product");
+			Guard.NotNull(product, nameof(product));
 
-            var result = new List<int>();
+			var result = new List<int>();
             if (!String.IsNullOrWhiteSpace(product.AllowedQuantities))
             {
                 product
@@ -255,8 +279,7 @@ namespace SmartStore.Services.Catalog
                     .ToList()
                     .ForEach(qtyStr =>
                     {
-                        int qty = 0;
-                        if (int.TryParse(qtyStr.Trim(), out qty))
+                        if (int.TryParse(qtyStr.Trim(), out var qty))
                         {
                             result.Add(qty);
                         }
@@ -268,8 +291,7 @@ namespace SmartStore.Services.Catalog
 
 		public static int[] ParseRequiredProductIds(this Product product)
 		{
-			if (product == null)
-				throw new ArgumentNullException("product");
+			Guard.NotNull(product, nameof(product));
 
 			if (String.IsNullOrEmpty(product.RequiredProductIds))
 				return new int[0];
@@ -280,8 +302,7 @@ namespace SmartStore.Services.Catalog
 				.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
 				.Select(x => x.Trim()))
 			{
-				int id = 0;
-				if (int.TryParse(idStr, out id))
+				if (int.TryParse(idStr, out var id))
 					ids.Add(id);
 			}
 
@@ -297,9 +318,9 @@ namespace SmartStore.Services.Catalog
 		/// <param name="currencyService">Currency service</param>
 		/// <param name="taxService">Tax service</param>
 		/// <param name="priceCalculationService">Price calculation service</param>
+		/// <param name="customer">Customer</param>
 		/// <param name="currency">Target currency</param>
 		/// <param name="priceAdjustment">Price adjustment</param>
-		/// <param name="languageInsensitive">Whether the result string should be language insensitive</param>
         /// <returns>The base price info</returns>
         public static string GetBasePriceInfo(this Product product,
 			ILocalizationService localizationService,
@@ -307,30 +328,27 @@ namespace SmartStore.Services.Catalog
             ICurrencyService currencyService,
 			ITaxService taxService,
 			IPriceCalculationService priceCalculationService,
+			Customer customer,
             Currency currency,
-			decimal priceAdjustment = decimal.Zero,
-			bool languageInsensitive = false)
+			decimal priceAdjustment = decimal.Zero)
         {
 			Guard.NotNull(product, nameof(product));
 			Guard.NotNull(currencyService, nameof(currencyService));
 			Guard.NotNull(taxService, nameof(taxService));
 			Guard.NotNull(priceCalculationService, nameof(priceCalculationService));
+			Guard.NotNull(customer, nameof(customer));
 			Guard.NotNull(currency, nameof(currency));
 
-            if (product.BasePriceHasValue && product.BasePriceAmount != Decimal.Zero)
+            if (product.BasePriceHasValue && product.BasePriceAmount != decimal.Zero)
             {
-                var workContext = EngineContext.Current.Resolve<IWorkContext>();
-
-                var taxrate = decimal.Zero;
-                var currentPrice = priceCalculationService.GetFinalPrice(product, workContext.CurrentCustomer, true);
-                var price = taxService.GetProductPrice(product, decimal.Add(currentPrice, priceAdjustment), out taxrate);
-                
+                var currentPrice = priceCalculationService.GetFinalPrice(product, customer, true);
+                var price = taxService.GetProductPrice(product, decimal.Add(currentPrice, priceAdjustment), customer, currency, out var taxrate);
                 price = currencyService.ConvertFromPrimaryStoreCurrency(price, currency);
 
-				return product.GetBasePriceInfo(price, localizationService, priceFormatter, currency, languageInsensitive);
+				return product.GetBasePriceInfo(price, localizationService, priceFormatter, currency);
 			}
 
-			return "";
+            return string.Empty;
         }
 
 		/// <summary>
@@ -341,27 +359,24 @@ namespace SmartStore.Services.Catalog
 		/// <param name="localizationService">Localization service</param>
 		/// <param name="priceFormatter">Price formatter</param>
 		/// <param name="currency">Target currency</param>
-		/// <param name="languageInsensitive">Whether the result string should be language insensitive</param>
 		/// <returns>The base price info</returns>
 		public static string GetBasePriceInfo(this Product product,
 			decimal productPrice,
 			ILocalizationService localizationService,
 			IPriceFormatter priceFormatter,
-			Currency currency,
-			bool languageInsensitive = false)
+			Currency currency)
 		{
 			Guard.NotNull(product, nameof(product));
 			Guard.NotNull(localizationService, nameof(localizationService));
 			Guard.NotNull(priceFormatter, nameof(priceFormatter));
 			Guard.NotNull(currency, nameof(currency));
 
-			if (product.BasePriceHasValue && product.BasePriceAmount != Decimal.Zero)
+			if (product.BasePriceHasValue && product.BasePriceAmount != decimal.Zero)
 			{
 				var value = Convert.ToDecimal((productPrice / product.BasePriceAmount) * product.BasePriceBaseAmount);
 				var valueFormatted = priceFormatter.FormatPrice(value, true, currency);
 				var amountFormatted = Math.Round(product.BasePriceAmount.Value, 2).ToString("G29");
-
-				var infoTemplate = localizationService.GetResource(languageInsensitive ? "Products.BasePriceInfo.LanguageInsensitive" : "Products.BasePriceInfo");
+				var infoTemplate = localizationService.GetResource("Products.BasePriceInfo");
 
 				var result = infoTemplate.FormatInvariant(
 					amountFormatted,
@@ -373,40 +388,38 @@ namespace SmartStore.Services.Catalog
 				return result;
 			}
 
-			return "";
+			return string.Empty;
 		}
 
 		public static string GetProductTypeLabel(this Product product, ILocalizationService localizationService)
 		{
 			if (product != null && product.ProductType != ProductType.SimpleProduct)
 			{
-				string key = "Admin.Catalog.Products.ProductType.{0}.Label".FormatWith(product.ProductType.ToString());
+				var key = "Admin.Catalog.Products.ProductType.{0}.Label".FormatInvariant(product.ProductType.ToString());
 				return localizationService.GetResource(key);
 			}
-			return "";
+
+			return string.Empty;
 		}
 
 		public static bool CanBeBundleItem(this Product product)
 		{
-			return (product != null && product.ProductType == ProductType.SimpleProduct && !product.IsRecurring && !product.IsDownload);
+			return product != null && product.ProductType == ProductType.SimpleProduct && !product.IsRecurring && !product.IsDownload;
 		}
 
-		public static bool IsValid(this ProductBundleItemData bundleItemData)
-		{
-			return (bundleItemData != null && bundleItemData.Item != null);
-		}
-		public static bool FilterOut(this ProductBundleItemData bundleItemData, ProductVariantAttributeValue value, out ProductBundleItemAttributeFilter filter)
-		{
-			if (bundleItemData.IsValid() && value != null && bundleItemData.Item.FilterAttributes)
-			{
-				filter = bundleItemData.Item.AttributeFilters.FirstOrDefault(x => x.AttributeId == value.ProductVariantAttributeId && x.AttributeValueId == value.Id);
+        public static bool FilterOut(this ProductBundleItem bundleItem, ProductVariantAttributeValue value, out ProductBundleItemAttributeFilter filter)
+        {
+            if (bundleItem != null && value != null && bundleItem.FilterAttributes)
+            {
+                filter = bundleItem.AttributeFilters.FirstOrDefault(x => x.AttributeId == value.ProductVariantAttributeId && x.AttributeValueId == value.Id);
+                return filter == null;
+            }
 
-				return (filter == null);
-			}
-			filter = null;
-			return false;
-		}
-		public static string GetLocalizedName(this ProductBundleItem bundleItem)
+            filter = null;
+            return false;
+        }
+
+        public static string GetLocalizedName(this ProductBundleItem bundleItem)
 		{
 			if (bundleItem != null)
 			{
@@ -428,8 +441,10 @@ namespace SmartStore.Services.Catalog
 		public static ProductBundleItemOrderData ToOrderData(this ProductBundleItemData bundleItemData, decimal priceWithDiscount = decimal.Zero, 
 			string attributesXml = null, string attributesInfo = null)
 		{
-			if (!bundleItemData.IsValid())
-				return null;
+            if (bundleItemData == null || bundleItemData.Item == null)
+            {
+                return null;
+            }
 
 			var item = bundleItemData.Item;
 			string bundleItemName = item.GetLocalized(x => x.Name);
@@ -439,7 +454,7 @@ namespace SmartStore.Services.Catalog
 				BundleItemId = item.Id,
 				ProductId = item.ProductId,
 				Sku = item.Product.Sku,
-				ProductName = (bundleItemName ?? item.Product.GetLocalized(x => x.Name)),
+				ProductName = bundleItemName ?? item.Product.GetLocalized(x => x.Name),
 				ProductSeName = item.Product.GetSeName(),
 				VisibleIndividually = item.Product.VisibleIndividually,
 				Quantity = item.Quantity,

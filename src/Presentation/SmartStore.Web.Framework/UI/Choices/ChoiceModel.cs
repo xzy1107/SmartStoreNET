@@ -58,6 +58,9 @@ namespace SmartStore.Web.Framework.UI.Choices
 		/// </summary>
 		public int? EndYear { get; set; }
 
+		public string UploadedFileGuid { get; set; }
+		public string UploadedFileName { get; set; }
+
 		public virtual IList<ChoiceItemModel> Values { get; set; }
 
 		public abstract string BuildControlId();
@@ -69,8 +72,10 @@ namespace SmartStore.Web.Framework.UI.Choices
 
 		public virtual string GetDescription()
 		{
+			var containsImg = Description.IsEmpty() ? false : Description.Contains("<img");
+
 			var desc = Description.RemoveHtml();
-			if (desc.HasValue() && !desc.Trim().IsCaseInsensitiveEqual(GetLabel()))
+			if (containsImg || (desc.HasValue() && !desc.Trim().IsCaseInsensitiveEqual(GetLabel())))
 			{
 				return Description;
 			}

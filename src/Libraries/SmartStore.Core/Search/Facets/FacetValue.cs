@@ -1,40 +1,18 @@
 ﻿using System;
+using System.Globalization;
 using SmartStore.Utilities;
 
 namespace SmartStore.Core.Search.Facets
 {
 	[Serializable]
-	public class FacetValue : IEquatable<FacetValue>
+	public class FacetValue : IEquatable<FacetValue>, ICloneable<FacetValue>
 	{
-		public FacetValue(bool value)
-			: this(value, IndexTypeCode.Boolean)
-		{
-		}
-
-		public FacetValue(int value)
-			: this(value, IndexTypeCode.Int32)
-		{
-		}
-
-		public FacetValue(double value)
-			: this(value, IndexTypeCode.Double)
-		{
-		}
-
-		public FacetValue(DateTime value)
-			: this(value, IndexTypeCode.DateTime)
-		{
-		}
-
-		public FacetValue(string value)
-			: this(value, IndexTypeCode.String)
+		public FacetValue()
 		{
 		}
 
 		public FacetValue(object value, IndexTypeCode typeCode)
 		{
-			Guard.NotNull(value, nameof(value));
-
 			Value = value;
 			TypeCode = typeCode;
 			IsRange = false;
@@ -50,63 +28,54 @@ namespace SmartStore.Core.Search.Facets
 			IsRange = true;
 		}
 
-		public FacetValue(FacetValue value)
-		{
-			Guard.NotNull(value, nameof(value));
-
-			Value = value.Value;
-			UpperValue = value.UpperValue;
-			TypeCode = value.TypeCode;
-			IncludesLower = value.IncludesLower;
-			IncludesUpper = value.IncludesUpper;
-			IsRange = value.IsRange;
-			IsSelected = value.IsSelected;
-			Label = value.Label;
-			ParentId = value.ParentId;
-			DisplayOrder = value.DisplayOrder;
-			Sorting = value.Sorting;
-		}
-
 		public object Value
 		{
 			get;
-			private set;
+			set;
 		}
 
 		public object UpperValue
 		{
 			get;
-			private set;
+			set;
 		}
 
 		public IndexTypeCode TypeCode
 		{
 			get;
-			private set;
+			set;
 		}
 
 		public bool IncludesLower
 		{
 			get;
-			private set;
+			set;
 		}
 
 		public bool IncludesUpper
 		{
 			get;
-			private set;
+			set;
 		}
 
 		public bool IsRange 
 		{
 			get;
-			private set;
+			set;
 		}
 
 		public bool IsSelected
 		{
 			get;
 			set;
+		}
+
+		public bool IsEmpty
+		{
+			get
+			{
+				return TypeCode == IndexTypeCode.Empty && Value == null;
+			}
 		}
 
 		#region Metadata
@@ -131,8 +100,8 @@ namespace SmartStore.Core.Search.Facets
 			{
 				var combiner = HashCodeCombiner
 					.Start()
-					.Add(Value.GetHashCode())
-					.Add(UpperValue.GetHashCode());
+					.Add(Value)
+					.Add(UpperValue);
 
 				return combiner.CombinedHash;
 			}
@@ -151,22 +120,31 @@ namespace SmartStore.Core.Search.Facets
 		public bool Equals(FacetValue other)
 		{
 			if (other == null || other.TypeCode != TypeCode || other.IsRange != IsRange)
+			{
 				return false;
+			}
 
 			if (other.IsRange)
 			{
 				if (other.IncludesLower != IncludesLower || other.IncludesUpper != IncludesUpper)
+				{
 					return false;
+				}
 
-				if (other.IncludesLower && other.IncludesUpper)
+				if (other.Value == null && Value == null && other.UpperValue == null && UpperValue == null)
 				{
-					return (other.Value != null && other.Value.Equals(Value) &&
-						other.UpperValue != null && other.UpperValue.Equals(UpperValue));
+					return true;
 				}
-				else if (other.IncludesUpper)
+
+				if (other.UpperValue != null && !other.UpperValue.Equals(UpperValue))
 				{
-					return other.UpperValue != null && other.UpperValue.Equals(UpperValue);
+					return false;
 				}
+			}
+
+			if (other.Value == null && Value == null)
+			{
+				return true;
 			}
 
 			return other.Value != null && other.Value.Equals(Value);
@@ -177,22 +155,46 @@ namespace SmartStore.Core.Search.Facets
 			return this.Equals(obj as FacetValue);
 		}
 
+        protected virtual string ConvertToString(object value)
+        {
+            if (value != null)
+            {
+                if (TypeCode == IndexTypeCode.DateTime)
+                {
+                    // The default conversion is not pretty enough.
+                    var dt = (DateTime)value;
+                    if (dt.Hour == 0 && dt.Minute == 0 && dt.Second == 0)
+                    {
+                        return dt.ToString("yyyy-MM-dd");
+                    }
+                    else
+                    {
+                        return dt.ToString("yyyy-MM-dd HH:mm:ss");
+                    }
+                }
+
+                return Convert.ToString(value, CultureInfo.InvariantCulture);
+            }
+
+            return string.Empty;
+        }
+
 		public override string ToString()
 		{
 			var result = string.Empty;
-			var valueStr = Value?.ToString() ?? string.Empty;
+            var valueStr = ConvertToString(Value);
 
 			if (IsRange)
 			{
-				var upperValueStr = UpperValue?.ToString() ?? string.Empty;
-
-				string expr = valueStr;
+                var upperValueStr = ConvertToString(UpperValue);
 				if (upperValueStr.HasValue())
 				{
-					expr += "-" + upperValueStr.ToString();
+					result = string.Concat(valueStr, "~", upperValueStr);
 				}
-
-				result = expr;
+				else
+				{
+					result = valueStr;
+				}
 			}
 			else
 			{
@@ -200,6 +202,16 @@ namespace SmartStore.Core.Search.Facets
 			}
 
 			return result;
+		}
+
+		public FacetValue Clone()
+		{
+			return (FacetValue)this.MemberwiseClone();
+		}
+
+		object ICloneable.Clone()
+		{
+			return this.MemberwiseClone();
 		}
 	}
 }

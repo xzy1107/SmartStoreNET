@@ -1,20 +1,38 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Configuration;
 using System.Dynamic;
+using System.Linq;
 using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Web.Hosting;
 using System.Web.Mvc;
 using SmartStore.ComponentModel;
+using System.Text;
+using Newtonsoft.Json;
+using System.Runtime.Serialization.Formatters.Binary;
 
 namespace SmartStore.Utilities
 {
     public static partial class CommonHelper
     {
 		private static bool? _isDevEnvironment;
+
+		[ThreadStatic]
+		private static Random _random;
 		
+		private static Random GetRandomizer()
+		{
+			if (_random == null)
+			{
+				_random = new Random();
+			}
+
+			return _random;
+		}
+
 		/// <summary>
         /// Generate random digit code
         /// </summary>
@@ -22,19 +40,21 @@ namespace SmartStore.Utilities
         /// <returns>Result string</returns>
         public static string GenerateRandomDigitCode(int length)
         {
-            var random = new Random();
-            string str = string.Empty;
-            for (int i = 0; i < length; i++)
-                str = String.Concat(str, random.Next(10).ToString());
-            return str;
-        }
+			var buffer = new int[length];
+			for (int i = 0; i < length; ++i)
+			{
+				buffer[i] = GetRandomizer().Next(10);
+			}
+
+			return string.Join("", buffer);
+		}
 
 		/// <summary>
-		/// Returns an random interger number within a specified rage
+		/// Returns a random number within the range <paramref name="min"/> to <paramref name="max"/> - 1.
 		/// </summary>
 		/// <param name="min">Minimum number</param>
-		/// <param name="max">Maximum number</param>
-		/// <returns>Result</returns>
+		/// <param name="max">Maximum number (exclusive!).</param>
+		/// <returns>Random integer number.</returns>
 		public static int GenerateRandomInteger(int min = 0, int max = 2147483647)
 		{
 			var randomNumberBuffer = new byte[10];
@@ -54,7 +74,8 @@ namespace SmartStore.Utilities
 		/// </remarks>
 		public static string MapPath(string path, bool findAppRoot = true)
 		{
-			Guard.NotNull(path, nameof(path));
+			if (path == null)
+				throw new ArgumentNullException(nameof(path));
 
 			if (HostingEnvironment.IsHosted)
 			{
@@ -176,11 +197,12 @@ namespace SmartStore.Utilities
 
 		public static IDictionary<string, object> ObjectToDictionary(object obj)
 		{
-			Guard.NotNull(obj, nameof(obj));
+			if (obj == null)
+				throw new ArgumentNullException(nameof(obj));
 
 			return FastProperty.ObjectToDictionary(
 				obj,
-				key => key.Replace("_", "-"));
+				key => key.Replace("_", "-").Replace("@", ""));
 		}
 
 		/// <summary>
@@ -229,6 +251,133 @@ namespace SmartStore.Utilities
 				output = default(T);
 				return false;
 			}
+		}
+
+		public static bool IsTruthy(object value)
+		{
+			if (value == null)
+				return false;
+
+			switch (value)
+			{
+				case string x:
+					return x.HasValue();
+				case bool x:
+					return x == true;
+				case DateTime x:
+					return x > DateTime.MinValue;
+				case TimeSpan x:
+					return x > TimeSpan.MinValue;
+				case Guid x:
+					return x != Guid.Empty;
+				case IComparable x:
+					return x.CompareTo(0) != 0;
+				case IEnumerable<object> x:
+					return x.Any();
+				case IEnumerable x:
+					return x.GetEnumerator().MoveNext();
+			}
+
+			if (value.GetType().IsNullable(out var wrappedType))
+			{
+				return IsTruthy(Convert.ChangeType(value, wrappedType));
+			}
+
+			return true;
+		}
+
+		public static long GetObjectSizeInBytes(object obj, HashSet<object> instanceLookup = null)
+		{
+			if (obj == null)
+				return 0;
+
+			var type = obj.GetType();
+			var genericArguments = type.GetGenericArguments();
+
+			long size = 0;
+
+			if (obj is string str)
+			{
+				size = Encoding.Default.GetByteCount(str);
+			}
+			else if (obj is StringBuilder sb)
+			{
+				size = Encoding.Default.GetByteCount(sb.ToString());
+			}
+			else if (type.IsEnum)
+			{
+				size = System.Runtime.InteropServices.Marshal.SizeOf(Enum.GetUnderlyingType(type));
+			}
+			else if (type.IsPredefinedSimpleType() || type.IsPredefinedGenericType())
+			{
+				//size = System.Runtime.InteropServices.Marshal.SizeOf(Nullable.GetUnderlyingType(type) ?? type); // crashes often
+				size = 8; // mean/average
+			}
+			else if (obj is Stream stream)
+			{
+				size = stream.Length;
+			}
+			else if (obj is IDictionary dic)
+			{
+				foreach (var item in dic.Values)
+				{
+					size += GetObjectSizeInBytes(item, instanceLookup);
+				}
+			}
+			else if (obj is IEnumerable e)
+			{
+				foreach (var item in e)
+				{
+					size += GetObjectSizeInBytes(item, instanceLookup);
+				}
+			}
+			else
+			{
+				if (instanceLookup == null)
+				{
+					instanceLookup = new HashSet<object>(ReferenceEqualityComparer.Default);
+				}
+
+				if (!type.IsValueType && instanceLookup.Contains(obj))
+				{
+					return 0;
+				}
+
+				instanceLookup.Add(obj);
+
+				var serialized = false;
+
+				if (type.IsSerializable && genericArguments.All(x => x.IsSerializable))
+				{
+					try
+					{
+						using (var s = new MemoryStream())
+						{
+							var formatter = new BinaryFormatter();
+							formatter.Serialize(s, obj);
+							size = s.Length;
+
+							serialized = true;
+						}
+					}
+					catch { }
+				}
+
+				if (!serialized)
+				{
+					// Serialization failed or is not supported: make JSON.
+					var json = JsonConvert.SerializeObject(obj, new JsonSerializerSettings
+					{
+						DateFormatHandling = DateFormatHandling.IsoDateFormat,
+						DateTimeZoneHandling = DateTimeZoneHandling.Utc,
+						MaxDepth = 10,
+						ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+					});
+					size = Encoding.Default.GetByteCount(json);
+				}
+			}
+
+			return size;
 		}
 	}
 }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Globalization;
 using System.Threading;
+using System.IO;
 using SmartStore.Utilities.Threading;
 
 namespace SmartStore.Core.IO
@@ -41,7 +42,7 @@ namespace SmartStore.Core.IO
 				{
 					return false;
 				}
-
+				
 				lockFile = new LockFile(_env.TenantFolder, path, DateTime.UtcNow.ToString("u"), _rwLock);
 				return true;
 			}
@@ -74,12 +75,12 @@ namespace SmartStore.Core.IO
 
 		private bool IsLockedInternal(string path)
 		{
-			if (_env.TenantFolder.FileExists(path))
+			// INFO: VirtualPathProvider caches file existence info, so not very reliable here.
+			if (File.Exists(_env.TenantFolder.MapPath(path)))
 			{
 				var content = _env.TenantFolder.ReadFile(path);
 
-				DateTime creationUtc;
-				if (DateTime.TryParse(content, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out creationUtc))
+				if (DateTime.TryParse(content, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var creationUtc))
 				{
 					// if expired the file is not removed
 					// it should be automatically as there is a finalizer in LockFile

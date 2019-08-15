@@ -16,7 +16,7 @@ namespace SmartStore.Services.Tasks
 {
 	public class DefaultTaskScheduler : DisposableObject, ITaskScheduler, IRegisteredObject
     {
-		private readonly IAsyncState _asyncState;
+		private readonly ICacheManager _cache;
 
 		private bool _intervalFixed;
 		private int _sweepInterval;
@@ -25,9 +25,9 @@ namespace SmartStore.Services.Tasks
         private bool _shuttingDown;
 		private int _errCount;
 
-        public DefaultTaskScheduler(IAsyncState asyncState)
+        public DefaultTaskScheduler(ICacheManager cache)
         {
-			_asyncState = asyncState;
+			_cache = cache;
 
 			_sweepInterval = 1;
 			_timer = new System.Timers.Timer();
@@ -105,15 +105,14 @@ namespace SmartStore.Services.Tasks
 		{
 			string authToken = Guid.NewGuid().ToString();
 
-			var cacheManager = EngineContext.Current.Resolve<ICacheManager>();
-			cacheManager.Put(GenerateAuthTokenCacheKey(authToken), true, TimeSpan.FromMinutes(1));
+			_cache.Put(GenerateAuthTokenCacheKey(authToken), true, TimeSpan.FromMinutes(1));
 
 			return authToken;
 		}
 
 		private string GenerateAuthTokenCacheKey(string authToken)
 		{
-			return "Scheduler.AuthToken." + authToken;
+			return "Scheduler:AuthToken:" + authToken;
 		}
 
         public bool VerifyAuthToken(string authToken)
@@ -121,11 +120,10 @@ namespace SmartStore.Services.Tasks
             if (authToken.IsEmpty())
                 return false;
 
-			var cacheManager = EngineContext.Current.Resolve<ICacheManager>();
 			var cacheKey = GenerateAuthTokenCacheKey(authToken);
-			if (cacheManager.Contains(cacheKey))
+			if (_cache.Contains(cacheKey))
 			{
-				cacheManager.Remove(cacheKey);
+				_cache.Remove(cacheKey);
 				return true;
 			}
 
@@ -134,14 +132,14 @@ namespace SmartStore.Services.Tasks
 
         public void RunSingleTask(int scheduleTaskId, IDictionary<string, string> taskParameters = null)
         {
-			string query = "";
+			taskParameters = taskParameters ?? new Dictionary<string, string>();
 
-			if (taskParameters != null && taskParameters.Any())
-			{
-                var qs = new QueryString();
-				taskParameters.Each(x => qs.Add(x.Key, x.Value));
-				query = qs.ToString();
-			}
+			// User executes task in backend explicitly
+			taskParameters["Explicit"] = "true";
+
+            var qs = new QueryString();
+			taskParameters.Each(x => qs.Add(x.Key, x.Value));
+			var query = qs.ToString();
 
 			CallEndpoint(new Uri("{0}/Execute/{1}{2}".FormatInvariant(_baseUrl, scheduleTaskId, query)));
         }
@@ -228,9 +226,15 @@ namespace SmartStore.Services.Tasks
 				{
 					if (response != null)
 					{
-						msg += " HTTP {0}, {1}".FormatCurrent((int)response.StatusCode, response.StatusDescription);
+						var statusCode = (int)response.StatusCode;
+						if (statusCode < 500)
+						{
+							// Any internal server error (>= 500) already handled by TaskSchedulerController's exception filter
+							msg += " HTTP {0}, {1}".FormatCurrent(statusCode, response.StatusDescription);
+							Logger.Error(msg);
+						}
 					}
-					Logger.Error(msg);
+					
 				}
 			}
 		}
@@ -257,5 +261,4 @@ namespace SmartStore.Services.Tasks
             HostingEnvironment.UnregisterObject(this); 
         }
     }
-
 }

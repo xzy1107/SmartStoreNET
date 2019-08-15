@@ -25,16 +25,17 @@ namespace SmartStore
 		{
 			try
 			{
-				if (request != null)
+				// TODO: not really reliable. Change this.
+				var area = request?.RequestContext?.RouteData?.GetAreaName();
+				if (area != null)
 				{
-					var area = request.RequestContext.RouteData.GetAreaName();
-					if (area != null)
-					{
-						return area.IsCaseInsensitiveEqual("admin");
-					}
+					return area.IsCaseInsensitiveEqual("admin");
 				}
-
-				return false;
+				else
+				{
+					var paths = new[] { "~/administration/", "~/admin/" };
+					return paths.Any(x => request?.AppRelativeCurrentExecutionFilePath?.StartsWith(x, StringComparison.OrdinalIgnoreCase) == true);
+				}
 			}
 			catch
 			{
@@ -56,13 +57,9 @@ namespace SmartStore
 		{
 			try
 			{
-				if (request != null)
-				{
-					var area = request.RequestContext.RouteData.GetAreaName();
-					return area.IsEmpty();
-				}
-
-				return false;
+				// TODO: not really reliable. Change this.
+				var area = request?.RequestContext?.RouteData?.GetAreaName();
+				return area.IsEmpty();
 			}
 			catch
 			{
@@ -133,8 +130,7 @@ namespace SmartStore
         {
             Guard.NotNull(httpContext, nameof(httpContext));
 
-            var handler = httpContext.Handler as MvcHandler;
-            if (handler != null && handler.RequestContext != null)
+            if (httpContext.Handler is MvcHandler handler && handler.RequestContext != null)
             {
                 return handler.RequestContext.RouteData;
             }
@@ -193,9 +189,11 @@ namespace SmartStore
 
 			if (value.HasValue() && cookie == null)
 			{
-				cookie = new HttpCookie("sm.UserThemeChoice");
-				cookie.HttpOnly = true;
-				cookie.Expires = DateTime.UtcNow.AddYears(1);					
+				cookie = new HttpCookie("sm.UserThemeChoice")
+				{
+					HttpOnly = true,
+					Expires = DateTime.UtcNow.AddYears(1)
+				};				
 			}
 
 			if (value.HasValue())
@@ -217,16 +215,13 @@ namespace SmartStore
 
 		internal static HttpCookie GetPreviewModeCookie(this HttpContextBase context, bool createIfMissing)
 		{
-			if (context == null)
-				return null;
-
-			var cookie = context.Request.Cookies.Get("sm.PreviewModeOverrides");
+			var httpRequest = context.SafeGetHttpRequest();
+			var cookie = httpRequest?.Cookies?.Get("sm.PreviewModeOverrides");
 			
-			if (cookie == null && createIfMissing)
+			if (cookie == null && createIfMissing && httpRequest != null)
 			{
-				cookie = new HttpCookie("sm.PreviewModeOverrides");
-				cookie.HttpOnly = true;
-				context.Request.Cookies.Set(cookie);
+				cookie = new HttpCookie("sm.PreviewModeOverrides") { HttpOnly = true };
+				httpRequest.Cookies.Set(cookie);
 			}
 
 			if (cookie != null)

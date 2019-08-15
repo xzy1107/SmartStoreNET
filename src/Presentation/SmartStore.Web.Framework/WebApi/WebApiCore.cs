@@ -22,7 +22,8 @@ namespace SmartStore.Web.Framework.WebApi
 			public static string Date { get { return Prefix + "Date"; } }
 			public static string PublicKey { get { return Prefix + "PublicKey"; } }
 			public static string MaxTop { get { return Prefix + "MaxTop"; } }
-			public static string Version { get { return Prefix + "Version"; } }
+            public static string AppVersion { get { return Prefix + "AppVersion"; } }
+            public static string Version { get { return Prefix + "Version"; } }
 			public static string CustomerId { get { return Prefix + "CustomerId"; } }
 			public static string HmacResultId { get { return Prefix + "HmacResultId"; } }
 			public static string HmacResultDescription { get { return Prefix + "HmacResultDesc"; } }
@@ -79,10 +80,10 @@ namespace SmartStore.Web.Framework.WebApi
 		{
 			var sb = new StringBuilder();
 
-			sb.AppendLine(string.Format("PublicKey: ", PublicKey));
-			sb.AppendLine(string.Format("Url: ", Url));
-			sb.AppendLine(string.Format("HttpMethod: ", HttpMethod));
-			sb.AppendLine(string.Format("HttpAcceptType: ", HttpAcceptType));
+			sb.AppendLine("PublicKey: " + PublicKey.EmptyNull());
+			sb.AppendLine("Url: " + Url.EmptyNull());
+			sb.AppendLine("HttpMethod: " + HttpMethod.EmptyNull());
+			sb.AppendLine("HttpAcceptType: " + HttpAcceptType.EmptyNull());
 
 			return sb.ToString();
 		}

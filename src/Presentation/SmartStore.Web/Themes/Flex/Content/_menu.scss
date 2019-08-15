@@ -1,15 +1,53 @@
-﻿/// <reference path="bs4/scss/bootstrap.scss" />
-/// <reference path="shared/_mixins.scss" />
+﻿/// <reference path="../../../Content/shared/_variables-shared.scss" />
+/// <reference path="../../../Content/shared/_mixins.scss" />
+/// <reference path="../../../Content/shared/_offcanvas.scss" />
+/// <reference path="_variables.scss" />
+/// <reference path="../../../Content/bs4/scss/bootstrap.scss" />
 
-$ocm-border-color:                      rgba(#000, 0.15);
+$ocm-border-color:                      rgba(#000, 0.1);
 $ocm-horizontal-padding:                1.6rem;
+$ocm-selected-color:                    $warning;
+
+
+//
+// Category Menu
+// ------------------------------------------------------
+
+.catmenu {
+    .catmenu-path-item {
+        font-weight: $font-weight-medium;
+        background: rgba($list-group-hover-bg, 0.5);
+    }
+
+    .catmenu-path-item.expanded,
+    .catmenu-item.parent {
+        padding-right: $list-group-item-padding-x * 1.5;
+
+        &:after {
+            @include fontawesome("\f105", 1.2rem);   
+            display: block;
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%); 
+        }
+    }
+
+    .catmenu-path-item.expanded {
+        color: $body-color;
+        &:after { content: '\f3bf'; font-size: inherit; }
+    }
+
+    .catmenu-path-item.active {
+        font-size: 1rem;
+        &:before { display: none !important; }
+    }
+}
+
 
 //
 // Sidebar Navigation Menus (Category menu etc.)
-// --------------------------------------------------
-
-
-
+// ------------------------------------------------------
 
 #offcanvas-menu {
     .tab-pane {
@@ -40,7 +78,7 @@ $ocm-horizontal-padding:                1.6rem;
     .offcanvas-menu-footer {
         padding: 1rem;
         border-top: 1px solid  $ocm-border-color;
-
+        
         .mf-dropdown {
             display: block;
             
@@ -51,27 +89,24 @@ $ocm-horizontal-padding:                1.6rem;
     }
     
     .menubar-link,
-    .category-container .nav-item {
+    .ocm-item {
         margin: 0;
-        float: none;
         border-bottom: 1px solid $ocm-border-color;
         display: block;
         font-size: 1rem;
+        position: relative;
 
-        .nav-link {
+        .ocm-link {
             display: block;
             color: $body-color;
             line-height: 1.3;
             padding: 1rem 2.5rem 1rem 2rem;
+            text-decoration: none !important;
                 
-            &:active { background-color: rgba(#000, 0.05); }   
-               
-            img {
-                width: 100px;
-                max-width: 100px;
-                max-height: 100px;
-                padding-right: 0.75rem;
-            }
+            &:active,
+            &:focus { 
+                background-color: rgba(#000, 0.05);
+            } 
         }
         
         &.has-children:after {
@@ -79,58 +114,113 @@ $ocm-horizontal-padding:                1.6rem;
             right: 1rem;
             top: 50%;
             transform: translateY(-50%);
+            @include fontawesome('\f054');
+            color: #646464;
+            font-size: 16px;
+            width: 16px;
+			height: 16px;
+			min-height: 16px;
+            text-align: center;
+        }
 
-            @include fontastic('\e93c');
-            //@include fontawesome('\f054');
+        &.has-children.animated:after {
+            animation: fa-spin .6s infinite linear;
+            margin-top: -9px;
+			font-family: fontastic;
+			content: '\e8d3' !important;
+        }
+
+        &.selected:before,
+        &.expanded:before {
+            @include active-list-item(5px, $ocm-selected-color);
         }
     }
-    
-    .show-all-manufacturers {
-        padding: 1rem;
-        border-bottom: 0;
-    }
-
-    .navbar-nav .navigate-back {
+   
+    .ocm-nav .navigate-back {
         padding-left: 0;
+
+        .fa {
+            font-size: 1.375rem;
+            vertical-align: text-bottom;
+            padding-right: .425rem;
+        }
     }
 
-    .navbar-nav .show-current-cat {
-        font-weight: 600;
+    .ocm-nav .show-current-cat {
+        font-weight: $font-weight-medium;
     }
-
+	/*
     .button-bar {
-        background: $gray-lightest;
+        background: $gray-100;
         padding: 1rem $ocm-horizontal-padding;    
         span {
             margin-right: 1rem;
         }
     }
+	*/
     .category-info {
         padding: 0 $ocm-horizontal-padding;
-
         .category-name {
-            font-size: 1.5rem;
             padding-top: 1rem;
+        }
+    }
+
+    // manufacturer tab
+    .manufacturer-container {
+        .ocm-item {
+            padding: 0 1.25rem;
+
+            .col-img {
+                width: 100px;
+                min-width: 100px;
+                max-width: 100px;
+
+                .ocm-img-link {
+                    padding: 0.5rem;
+                    display: block;
+                    > img {
+                        width: 100%;
+                    }
+                }
+            }
+            .ocm-link { padding-left: 0.75rem; }
+            .col-img ~ .col-data > .ocm-link { padding-left: 0; }
+        }
+
+        .ocm-nav {
+            margin-bottom: 0;
+        }
+        .show-all-manufacturers {
+            padding: 1rem;
+            border-bottom: 0;
         }
     }
 }
 
-// animation 
+
+//
+// Offcanvas animation
+// ------------------------------------------------------
+
 #offcanvas-menu {
     .layer {
-        transition: transform 0.25s ease-out;
+        transition: transform 0.3s ease-out;
         background: #fff;
         transform: translateX(-30%);
         z-index: 0;
+        border-left: 1px solid $ocm-border-color;
+        border-right: 1px solid $ocm-border-color;
 
-        &.in {
+        &.show {
             transform: translateX(0);
-            z-index: 2;
+			-webkit-transform: translateX(0);
+            z-index: 1;
+            border-color: transparent;
         }
 
-        &.in ~ .layer {
+        &.show ~ .layer {
             transform: translateX(100%);
-            z-index: 1;
+            z-index: 2;
         }
     }
 
@@ -143,61 +233,93 @@ $ocm-horizontal-padding:                1.6rem;
     }
 }
 
+//
+// Offcanvas Service menu 
+// ------------------------------------------------------
 
-
-// service menu 
 #ocm-service {
-    .menubar-group {
-        display: block;
-        margin-left: 0;
-        text-align: left;
-        border-bottom: 1px solid $ocm-border-color;
+    .menubar {
+        flex-direction: column;
+    }
 
-        .menubar-link {
-            text-transform: initial;
-            padding: 1rem 2rem;
-            border-bottom: none;
-        }
+    .menubar-group {
+        margin-left: 0 !important;
+        flex-direction: column;
+    }
+
+    .menubar-link {
+        text-transform: initial;
+        padding: 1rem 2rem;
+        border-bottom: 1px solid $ocm-border-color;
+        background-color: #fff;
+        color: $body-color;
+    }
+
+    .menubar-icon {
+        display: none;
+    }
+
+    .menubar-caret {
+        position: absolute;
+        right: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+    }
+
+    .openend .menubar-caret:before {
+        content: "\f106";
     }
 
     .dropdown-menu {
-        position: relative;
+        position: static;
         float: initial;
         min-width: initial;
         padding: initial;
         margin: initial;
         border: none;
+        border-bottom: 1px solid $ocm-border-color;
         border-radius: initial;
         box-shadow: initial;
+        padding-top: 0.75rem;
+        padding-bottom: 0.75rem;
     }
-    .fa:not(.fa-caret-down) {
+
+    .dropdown-divider {
         display: none;
     }
-    .dropdown .menubar-link {
-        position: relative;
-        
-        .fa-caret-down:before {
-            font-weight: bold;
-            position: absolute;
-            font-size: 1.2rem;
-            line-height: 1;
-            content: "\f106";
-            right: 1rem;
-            top: 50%;
-            margin-top: -9px;
-        }
-    }
     
-    .dropdown.open .menubar-link .fa-caret-down:before  { 
-        content: "\f107";
+    .dropdown.show > .menubar-link {
+        font-weight: $font-weight-medium;
     }
+
     .menubar-link span {
         padding-left: 0;
     }
+
     .dropdown-item {
-        padding-left: $ocm-horizontal-padding;
+        padding-left: 2.75rem;
         font-size: 1rem;
+
+        span:not(.badge) {
+            padding-left: 0;
+        }
     }
 }
 
 
+//
+// Misc
+// ------------------------------------------------------
+
+// very weird hack to prevent loading icon from wobbling :-/ font-size is 20px
+.touchevents .category-container .ocm-item.has-children.animated:after {
+    max-height: 18px;
+}
+
+/*
+body > .select2-container,
+body > .select2-container .select2-dropdown {
+    // one higher than .offcanvas-overlay
+    z-index: $offcanvas-z-index + 1;
+}
+*/

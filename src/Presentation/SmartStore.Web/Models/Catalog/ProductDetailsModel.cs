@@ -2,8 +2,11 @@
 using System.Collections.Generic;
 using System.Web.Mvc;
 using SmartStore.Core.Domain.Catalog;
+using SmartStore.Services.Catalog.Modelling;
+using SmartStore.Services.Localization;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Modelling;
+using SmartStore.Web.Framework.Security;
 using SmartStore.Web.Framework.UI;
 using SmartStore.Web.Framework.UI.Choices;
 using SmartStore.Web.Models.Media;
@@ -24,6 +27,7 @@ namespace SmartStore.Web.Models.Catalog
 			AssociatedProducts = new List<ProductDetailsModel>();
 			BundledItems = new List<ProductDetailsModel>();
 			BundleItem = new ProductBundleItemModel();
+			ActionItems = new Dictionary<string, ActionItemModel>();
 			IsAvailable = true;
         }
 
@@ -39,13 +43,13 @@ namespace SmartStore.Web.Models.Catalog
 			}
 		}
 
-        public string Name { get; set; }
-        public string ShortDescription { get; set; }
-        public string FullDescription { get; set; }
+        public LocalizedValue<string> Name { get; set; }
+        public LocalizedValue<string> ShortDescription { get; set; }
+        public LocalizedValue<string> FullDescription { get; set; }
         public string ProductTemplateViewPath { get; set; }
-        public string MetaKeywords { get; set; }
-        public string MetaDescription { get; set; }
-        public string MetaTitle { get; set; }
+        public LocalizedValue<string> MetaKeywords { get; set; }
+        public LocalizedValue<string> MetaDescription { get; set; }
+        public LocalizedValue<string> MetaTitle { get; set; }
         public string SeName { get; set; }
 		public ProductType ProductType { get; set; }
 		public bool VisibleIndividually { get; set; }
@@ -65,6 +69,13 @@ namespace SmartStore.Web.Models.Catalog
 		public bool HasSampleDownload { get; set; }
 
 		public GiftCardModel GiftCard { get; set; }
+		public string GiftCardFieldPrefix
+		{
+			get
+			{
+				return GiftCardQueryItem.CreateKey(Id, BundleItem.Id, null);
+			}
+		}
 
 		public string StockAvailability { get; set; }
 		public bool IsAvailable { get; set; }
@@ -92,7 +103,7 @@ namespace SmartStore.Web.Models.Catalog
         public string DeliveryTimeName { get; set; }
         public string DeliveryTimeHexValue { get; set; }
 		public bool DisplayDeliveryTime { get; set; }
-        public string QuantityUnitName { get; set; }
+        public LocalizedValue<string> QuantityUnitName { get; set; }
         public bool DisplayProductReviews { get; set; }
 		public bool IsShipEnabled { get; set; }
 		public bool DisplayDeliveryTimeAccordingToStock { get; set; }
@@ -102,13 +113,15 @@ namespace SmartStore.Web.Models.Catalog
 		public bool BundlePerItemShipping { get; set; }
 		public bool BundlePerItemPricing { get; set; }
 		public bool BundlePerItemShoppingCart { get; set; }
-
-		public ProductVariantAttributeCombination SelectedCombination { get; set; }
+        public bool DisplayTextForZeroPrices { get; set; }
+        public PriceDisplayStyle PriceDisplayStyle { get; set; }
+        
+        public ProductVariantAttributeCombination SelectedCombination { get; set; }
 
         public IList<ManufacturerOverviewModel> Manufacturers { get; set; }
         public int ReviewCount { get; set; }
 
-		//a list of associated products. For example, "Grouped" products could have several child "simple" products
+		// A list of associated products. For example, "Grouped" products could have several child "simple" products
 		public IList<ProductDetailsModel> AssociatedProducts { get; set; }
 		public bool IsAssociatedProduct { get; set; }
 
@@ -121,20 +134,22 @@ namespace SmartStore.Web.Models.Catalog
 		public bool AskQuestionEnabled { get; set; }
 		public string ProductShareCode { get; set; }
 
+		public IDictionary<string, ActionItemModel> ActionItems { get; set; }
+
 		#region Nested Classes
 
-		public partial class ProductBreadcrumbModel : ModelBase
-        {
-            public ProductBreadcrumbModel()
-            {
-				CategoryBreadcrumb = new List<MenuItem>();
-            }
-
-            public int ProductId { get; set; }
-            public string ProductName { get; set; }
-            public string ProductSeName { get; set; }
-            public IList<MenuItem> CategoryBreadcrumb { get; set; }
-        }
+		public partial class ActionItemModel : ModelBase
+		{
+			public string Key { get; set; }
+			public string Title { get; set; }
+			public string Tooltip { get; set; }
+			public string Href { get; set; }
+			public string CssClass { get; set; }
+			public string IconCssClass { get; set; }
+			public bool IsPrimary { get; set; }
+			public string PrimaryActionColor { get; set; }
+			public int Priority { get; set; }
+		}
 
 		public partial class AddToCartModel : ModelBase, IQuantityInput
 		{
@@ -155,7 +170,7 @@ namespace SmartStore.Web.Models.Catalog
 
             public int MinOrderAmount { get; set; }
             public int MaxOrderAmount { get; set; }
-			public string QuantityUnitName { get; set; }
+			public LocalizedValue<string> QuantityUnitName { get; set; }
             public int QuantityStep { get; set; }
             public bool HideQuantityControl { get; set; }
             public QuantityControlType QuantiyControlType { get; set; }
@@ -186,8 +201,9 @@ namespace SmartStore.Web.Models.Catalog
 			public int ProductId { get; set; }
 
 			public bool HidePrices { get; set; }
+            public bool ShowLoginNote { get; set; }
 
-			public bool DynamicPriceUpdate { get; set; }
+            public bool DynamicPriceUpdate { get; set; }
 			public bool BundleItemShowBasePrice { get; set; }
 
 			public string NoteWithDiscount { get; set; }
@@ -199,19 +215,19 @@ namespace SmartStore.Web.Models.Catalog
 			public bool IsGiftCard { get; set; }
 
 			[SmartResourceDisplayName("Products.GiftCard.RecipientName")]
-			[AllowHtml]
 			public string RecipientName { get; set; }
+
 			[SmartResourceDisplayName("Products.GiftCard.RecipientEmail")]
-			[AllowHtml]
 			public string RecipientEmail { get; set; }
+
 			[SmartResourceDisplayName("Products.GiftCard.SenderName")]
-			[AllowHtml]
 			public string SenderName { get; set; }
+
 			[SmartResourceDisplayName("Products.GiftCard.SenderEmail")]
-			[AllowHtml]
 			public string SenderEmail { get; set; }
+
 			[SmartResourceDisplayName("Products.GiftCard.Message")]
-			[AllowHtml]
+			[SanitizeHtml]
 			public string Message { get; set; }
 
 			public GiftCardType GiftCardType { get; set; }
@@ -220,7 +236,6 @@ namespace SmartStore.Web.Models.Catalog
 		public partial class TierPriceModel : ModelBase
 		{
 			public string Price { get; set; }
-
 			public int Quantity { get; set; }
 		}
 
@@ -232,7 +247,7 @@ namespace SmartStore.Web.Models.Catalog
 
 			public override string BuildControlId()
 			{
-				return string.Format("product_attribute_{0}_{1}_{2}_{3}", ProductId, BundleItemId, ProductAttributeId, Id);
+				return ProductVariantQueryItem.CreateKey(ProductId, BundleItemId, ProductAttributeId, Id);
 			}
 
 			public override string GetFileUploadUrl(UrlHelper url)

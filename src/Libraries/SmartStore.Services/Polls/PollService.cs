@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using SmartStore.Core;
 using SmartStore.Core.Caching;
@@ -115,9 +116,6 @@ namespace SmartStore.Services.Polls
                 throw new ArgumentNullException("poll");
 
             _pollRepository.Delete(poll);
-
-            //event notification
-            _eventPublisher.EntityDeleted(poll);
         }
 
         public virtual void InsertPoll(Poll poll)
@@ -126,9 +124,6 @@ namespace SmartStore.Services.Polls
                 throw new ArgumentNullException("poll");
 
             _pollRepository.Insert(poll);
-
-            //event notification
-            _eventPublisher.EntityInserted(poll);
         }
 
         public virtual void UpdatePoll(Poll poll)
@@ -137,9 +132,6 @@ namespace SmartStore.Services.Polls
                 throw new ArgumentNullException("poll");
 
             _pollRepository.Update(poll);
-
-            //event notification
-            _eventPublisher.EntityUpdated(poll);
         }
         
         public virtual PollAnswer GetPollAnswerById(int pollAnswerId)
@@ -160,9 +152,6 @@ namespace SmartStore.Services.Polls
                 throw new ArgumentNullException("pollAnswer");
 
             _pollAnswerRepository.Delete(pollAnswer);
-
-            //event notification
-            _eventPublisher.EntityDeleted(pollAnswer);
         }
 
         public virtual bool AlreadyVoted(int pollId, int customerId)
@@ -175,6 +164,28 @@ namespace SmartStore.Services.Polls
                           where pa.PollId == pollId && pvr.CustomerId == customerId
                           select pvr).Count() > 0;
             return result;
+        }
+
+        public virtual IPagedList<PollVotingRecord> GetVotingRecords(int pollId, int pageIndex, int pageSize)
+        {
+            if (pollId == 0)
+            {
+                return new PagedList<PollVotingRecord>(new List<PollVotingRecord>(), pageIndex, pageSize);
+            }
+
+            var query =
+                from pa in _pollAnswerRepository.TableUntracked
+                join pvr in _pollVotingRecords.TableUntracked on pa.Id equals pvr.PollAnswerId
+                where pa.PollId == pollId
+                orderby pa.DisplayOrder, pvr.CreatedOnUtc descending
+                select pvr;
+
+            query = query
+                .Expand(x => x.Customer)
+                .Expand(x => x.PollAnswer);
+
+            var votings = new PagedList<PollVotingRecord>(query, pageIndex, pageSize);
+            return votings;
         }
     }
 }

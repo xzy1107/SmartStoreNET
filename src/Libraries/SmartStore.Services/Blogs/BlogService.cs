@@ -7,6 +7,8 @@ using SmartStore.Core.Domain.Blogs;
 using SmartStore.Core.Domain.Stores;
 using SmartStore.Core.Events;
 using SmartStore.Services.Localization;
+using SmartStore.Core.Domain.Seo;
+using SmartStore.Utilities;
 
 namespace SmartStore.Services.Blogs
 {
@@ -21,8 +23,8 @@ namespace SmartStore.Services.Blogs
 		private readonly IRepository<StoreMapping> _storeMappingRepository;
 		private readonly ICommonServices _services;
 		private readonly ILanguageService _languageService;
-
-		private readonly BlogSettings _blogSettings;
+        private readonly SeoSettings _seoSettings;
+        private readonly BlogSettings _blogSettings;
 
         #endregion
 
@@ -32,15 +34,17 @@ namespace SmartStore.Services.Blogs
 			IRepository<StoreMapping> storeMappingRepository,
 			ICommonServices services,
 			ILanguageService languageService,
-			BlogSettings blogSettings)
+            SeoSettings seoSettings,
+            BlogSettings blogSettings)
         {
             _blogPostRepository = blogPostRepository;
 			_storeMappingRepository = storeMappingRepository;
 			_services = services;
 			_languageService = languageService;
 			_blogSettings = blogSettings;
+            _seoSettings = seoSettings;
 
-			this.QuerySettings = DbQuerySettings.Default;
+            this.QuerySettings = DbQuerySettings.Default;
         }
 
 		public DbQuerySettings QuerySettings { get; set; }
@@ -59,9 +63,6 @@ namespace SmartStore.Services.Blogs
                 throw new ArgumentNullException("blogPost");
 
             _blogPostRepository.Delete(blogPost);
-
-            //event notification
-            _services.EventPublisher.EntityDeleted(blogPost);
         }
 
         /// <summary>
@@ -159,9 +160,15 @@ namespace SmartStore.Services.Blogs
             //we laod all records and only then filter them by tag
 			var blogPostsAll = GetAllBlogPosts(storeId, languageId, null, null, 0, int.MaxValue, showHidden);
             var taggedBlogPosts = new List<BlogPost>();
+            
             foreach (var blogPost in blogPostsAll)
             {
-                var tags = blogPost.ParseTags();
+                var tags = blogPost.ParseTags().Select(x => SeoHelper.GetSeName(x,
+                    _seoSettings.ConvertNonWesternChars,
+                    _seoSettings.AllowUnicodeCharsInUrls,
+                    true,
+                    _seoSettings.SeoNameCharConversion));
+
                 if (!String.IsNullOrEmpty(tags.FirstOrDefault(t => t.Equals(tag, StringComparison.InvariantCultureIgnoreCase))))
                     taggedBlogPosts.Add(blogPost);
             }
@@ -216,9 +223,6 @@ namespace SmartStore.Services.Blogs
                 throw new ArgumentNullException("blogPost");
 
             _blogPostRepository.Insert(blogPost);
-
-            //event notification
-            _services.EventPublisher.EntityInserted(blogPost);
         }
 
         /// <summary>
@@ -231,9 +235,6 @@ namespace SmartStore.Services.Blogs
                 throw new ArgumentNullException("blogPost");
 
             _blogPostRepository.Update(blogPost);
-
-            //event notification
-            _services.EventPublisher.EntityUpdated(blogPost);
         }
         
         /// <summary>

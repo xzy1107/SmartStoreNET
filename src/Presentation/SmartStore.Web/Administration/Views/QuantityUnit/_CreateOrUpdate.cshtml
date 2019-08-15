@@ -1,8 +1,4 @@
 ﻿@model QuantityUnitModel
-@using Telerik.Web.Mvc.UI;
-@{
-    var cultures = System.Globalization.CultureInfo.GetCultures(System.Globalization.CultureTypes.SpecificCultures).ToList();
-}
 
 @Html.HiddenFor(model => model.Id)
 @(Html.LocalizedEditor<QuantityUnitModel, QuantityUnitLocalizedModel>("measure-unit-info-localized",
@@ -12,10 +8,22 @@
                 @Html.SmartLabelFor(model => model.Locales[item].Name)
             </td>
             <td class="adminData">
+				@*IMPORTANT: Do not delete, this hidden element contains the id to assign localized values to the corresponding language *@
+				@Html.HiddenFor(model => model.Locales[item].LanguageId)
+
                 @Html.EditorFor(model => Model.Locales[item].Name)
                 @Html.ValidationMessageFor(model => model.Locales[item].Name)
             </td>
         </tr>
+         <tr>
+             <td class="adminTitle">
+                 @Html.SmartLabelFor(model => Model.Locales[item].NamePlural)
+             </td>
+             <td class="adminData">
+                 @Html.EditorFor(model => Model.Locales[item].NamePlural)
+                 @Html.ValidationMessageFor(model => Model.Locales[item].NamePlural)
+             </td>
+         </tr>
          <tr>
              <td class="adminTitle">
                  @Html.SmartLabelFor(model => Model.Locales[item].Description)
@@ -25,11 +33,6 @@
                  @Html.ValidationMessageFor(model => Model.Locales[item].Description)
              </td>
          </tr>
-        <tr>
-            <td colspan="2">
-                @Html.HiddenFor(model => model.Locales[item].LanguageId)
-            </td>
-        </tr>
     </table>
     ,
     @<table class="adminContent">
@@ -40,6 +43,15 @@
             <td class="adminData">
                 @Html.EditorFor(model => model.Name)
                 @Html.ValidationMessageFor(model => model.Name)
+            </td>
+        </tr>
+        <tr>
+            <td class="adminTitle">
+                @Html.SmartLabelFor(model => model.NamePlural)
+            </td>
+            <td class="adminData">
+                @Html.EditorFor(model => model.NamePlural)
+                @Html.ValidationMessageFor(model => model.NamePlural)
             </td>
         </tr>
          <tr>

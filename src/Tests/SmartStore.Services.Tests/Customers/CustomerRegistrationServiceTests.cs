@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using Rhino.Mocks;
@@ -7,6 +8,7 @@ using SmartStore.Core.Caching;
 using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Common;
 using SmartStore.Core.Domain.Customers;
+using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Security;
 using SmartStore.Core.Events;
 using SmartStore.Core.Fakes;
@@ -18,13 +20,14 @@ using SmartStore.Tests;
 
 namespace SmartStore.Services.Tests.Customers
 {
-	[TestFixture]
+    [TestFixture]
     public class CustomerRegistrationServiceTests : ServiceTest
     {
         IRepository<Customer> _customerRepo;
         IRepository<CustomerRole> _customerRoleRepo;
         IRepository<GenericAttribute> _genericAttributeRepo;
 		IRepository<RewardPointsHistory> _rewardPointsHistoryRepo;
+        IRepository<ShoppingCartItem> _shoppingCartItemRepo;
         IGenericAttributeService _genericAttributeService;
         IEncryptionService _encryptionService;
         ICustomerService _customerService;
@@ -37,6 +40,7 @@ namespace SmartStore.Services.Tests.Customers
 		IStoreContext _storeContext;
 		ICommonServices _services;
 		IUserAgent _userAgent;
+		Lazy<IGdprTool> _gdprTool;
 
 		[SetUp]
         public new void SetUp()
@@ -109,11 +113,12 @@ namespace SmartStore.Services.Tests.Customers
             _eventPublisher = MockRepository.GenerateMock<IEventPublisher>();
             _eventPublisher.Expect(x => x.Publish(Arg<object>.Is.Anything));
 
-            _customerRepo.Expect(x => x.Table).Return(new List<Customer>() { customer1, customer2, customer3, customer4, customer5 }.AsQueryable());
+            _customerRepo.Expect(x => x.Table).Return(new List<Customer> { customer1, customer2, customer3, customer4, customer5 }.AsQueryable());
 
             _customerRoleRepo = MockRepository.GenerateMock<IRepository<CustomerRole>>();
             _genericAttributeRepo = MockRepository.GenerateMock<IRepository<GenericAttribute>>();
 			_rewardPointsHistoryRepo = MockRepository.GenerateMock<IRepository<RewardPointsHistory>>();
+            _shoppingCartItemRepo = MockRepository.GenerateMock<IRepository<ShoppingCartItem>>();
 			_userAgent = MockRepository.GenerateMock<IUserAgent>();
 
 			_genericAttributeService = MockRepository.GenerateMock<IGenericAttributeService>();
@@ -125,9 +130,23 @@ namespace SmartStore.Services.Tests.Customers
 			_services.Expect(x => x.StoreContext).Return(_storeContext);
 			_services.Expect(x => x.RequestCache).Return(NullRequestCache.Instance);
 			_services.Expect(x => x.Cache).Return(NullCache.Instance);
+			_services.Expect(x => x.EventPublisher).Return(_eventPublisher);
 
-			_customerService = new CustomerService(_customerRepo, _customerRoleRepo,
-                _genericAttributeRepo, _rewardPointsHistoryRepo, _genericAttributeService, _rewardPointsSettings, _services, new FakeHttpContext("~/"), _userAgent);
+			_gdprTool = MockRepository.GenerateMock<Lazy<IGdprTool>>();
+
+			_customerService = new CustomerService(
+				_customerRepo, 
+				_customerRoleRepo,
+                _genericAttributeRepo, 
+				_rewardPointsHistoryRepo, 
+                _shoppingCartItemRepo,
+				_genericAttributeService,
+				_rewardPointsSettings, 
+				_services, 
+				new FakeHttpContext("~/"), 
+				_userAgent, 
+				new CustomerSettings(),
+				_gdprTool);
 
             _customerRegistrationService = new CustomerRegistrationService(_customerService,
                 _encryptionService, _newsLetterSubscriptionService, _rewardPointsSettings, _customerSettings, _storeContext, _eventPublisher);

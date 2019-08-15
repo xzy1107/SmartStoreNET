@@ -118,14 +118,12 @@ namespace SmartStore.Admin.Controllers
 				});
 			}
 
-			model.AvailableStores = _services.StoreService.GetAllStores()
-				.Select(s => s.ToModel())
-				.ToList();
-
 			if (!excludeProperties)
 			{
 				model.SelectedStoreIds = _storeMappingService.GetStoresIdsWithAccess(checkoutAttribute);
 			}
+
+			model.AvailableStores = _services.StoreService.GetAllStores().ToSelectListItems(model.SelectedStoreIds);
 		}
 
         #endregion
@@ -212,7 +210,7 @@ namespace SmartStore.Admin.Controllers
 
                 UpdateAttributeLocales(checkoutAttribute, model);
 
-				_storeMappingService.SaveStoreMappings(checkoutAttribute, model.SelectedStoreIds);
+				SaveStoreMappings(checkoutAttribute, model);
 
 				//activity log
 				_customerActivityService.InsertActivity("AddNewCheckoutAttribute", _services.Localization.GetResource("ActivityLog.AddNewCheckoutAttribute"), checkoutAttribute.Name);
@@ -265,7 +263,7 @@ namespace SmartStore.Admin.Controllers
 
                 UpdateAttributeLocales(checkoutAttribute, model);
 
-				_storeMappingService.SaveStoreMappings(checkoutAttribute, model.SelectedStoreIds);
+				SaveStoreMappings(checkoutAttribute, model);
 
 				//activity log
 				_customerActivityService.InsertActivity("EditCheckoutAttribute", _services.Localization.GetResource("ActivityLog.EditCheckoutAttribute"), checkoutAttribute.Name);

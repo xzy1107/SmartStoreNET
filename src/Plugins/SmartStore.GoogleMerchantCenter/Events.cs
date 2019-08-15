@@ -8,15 +8,13 @@ using SmartStore.Web.Framework.Modelling;
 
 namespace SmartStore.GoogleMerchantCenter
 {
-	public class Events : 
-		IConsumer<TabStripCreated>,
-		IConsumer<ModelBoundEvent>
+	public class Events : IConsumer
 	{
 		private readonly IGoogleFeedService _googleService;
 
 		public Events(IGoogleFeedService googleService)
 		{
-			this._googleService = googleService;
+			_googleService = googleService;
 		}
 
 		public void HandleEvent(TabStripCreated eventMessage)
@@ -27,7 +25,7 @@ namespace SmartStore.GoogleMerchantCenter
 
                 eventMessage.ItemFactory.Add().Text("GMC")
                     .Name("tab-gmc")
-                    .Icon("fa fa-google fa-lg fa-fw")
+                    .Icon("fab fa-google fa-lg fa-fw")
                     .LinkHtmlAttributes(new { data_tab_name = "GMC" })
                     .Route("SmartStore.GoogleMerchantCenter", new { action = "ProductEditTab", productId = productId })
                     .Ajax();
@@ -56,7 +54,6 @@ namespace SmartStore.GoogleMerchantCenter
 				};
 			}
 
-			// map objects
 			entity.AgeGroup = model.AgeGroup;
 			entity.Color = model.Color;
 			entity.Gender = model.Gender;

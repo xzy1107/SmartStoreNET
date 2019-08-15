@@ -26,14 +26,14 @@ namespace SmartStore.Services.Tests.Search
 		private IRepository<Product> _productRepository;
 		private IRepository<ProductManufacturer> _productManufacturerRepository;
 		private IRepository<ProductCategory> _productCategoryRepository;
-		private IRepository<Manufacturer> _manufacturerRepository;
-		private IRepository<Category> _categoryRepository;
 		private IRepository<LocalizedProperty> _localizedPropertyRepository;
 		private IRepository<StoreMapping> _storeMappingRepository;
 		private IRepository<AclRecord> _aclRepository;
 		private IEventPublisher _eventPublisher;
 		private ICommonServices _services;
 		private IDeliveryTimeService _deliveryTimeService;
+		private IManufacturerService _manufacturerService;
+		private ICategoryService _categoryService;
 
 		private void InitMocks(CatalogSearchQuery query, IEnumerable<Product> products, IEnumerable<LocalizedProperty> localized)
 		{
@@ -90,28 +90,28 @@ namespace SmartStore.Services.Tests.Search
 			_productRepository = MockRepository.GenerateMock<IRepository<Product>>();
 			_productManufacturerRepository = MockRepository.GenerateMock<IRepository<ProductManufacturer>>();
 			_productCategoryRepository = MockRepository.GenerateMock<IRepository<ProductCategory>>();
-			_manufacturerRepository = MockRepository.GenerateMock<IRepository<Manufacturer>>();
-			_categoryRepository = MockRepository.GenerateMock<IRepository<Category>>();
 			_localizedPropertyRepository = MockRepository.GenerateMock<IRepository<LocalizedProperty>>();
 			_storeMappingRepository = MockRepository.GenerateMock<IRepository<StoreMapping>>();
 			_aclRepository = MockRepository.GenerateMock<IRepository<AclRecord>>();
 			_eventPublisher = MockRepository.GenerateMock<IEventPublisher>();
 			_services = MockRepository.GenerateMock<ICommonServices>();
 			_deliveryTimeService = MockRepository.GenerateMock<IDeliveryTimeService>();
+			_manufacturerService = MockRepository.GenerateMock<IManufacturerService>();
+			_categoryService = MockRepository.GenerateMock<ICategoryService>();
 
 			_linqCatalogSearchService = new LinqCatalogSearchService(
 				_productService,
 				_productRepository,
 				_productManufacturerRepository,
 				_productCategoryRepository,
-				_manufacturerRepository,
-				_categoryRepository,
 				_localizedPropertyRepository, 
 				_storeMappingRepository, 
 				_aclRepository, 
 				_eventPublisher,
 				_services,
-				_deliveryTimeService);
+				_deliveryTimeService,
+				_manufacturerService,
+				_categoryService);
 		}
 
 		[Test]
@@ -278,7 +278,7 @@ namespace SmartStore.Services.Tests.Search
 				new SearchProduct(5) { ParentGroupedProductId = 36 }
 			};
 
-			var result = Search(new CatalogSearchQuery().HasParentGroupedProductId(36), products);
+			var result = Search(new CatalogSearchQuery().HasParentGroupedProduct(36), products);
 
 			Assert.That(result.Hits.Count, Is.EqualTo(2));
 		}
@@ -551,6 +551,78 @@ namespace SmartStore.Services.Tests.Search
 
 			result = Search(new CatalogSearchQuery().CreatedBetween(null, new DateTime(2016, 7, 1)), products);
 			Assert.That(result.Hits.Count(), Is.EqualTo(5));
+		}
+
+		[Test]
+		public void LinqSearch_filter_available_only()
+		{
+			var products = new List<Product>
+			{
+				new SearchProduct(1),
+				new SearchProduct(2)
+				{
+					StockQuantity = 0,
+					ManageInventoryMethod = ManageInventoryMethod.ManageStock,
+					BackorderMode = BackorderMode.NoBackorders
+				},
+				new SearchProduct(3)
+				{
+					StockQuantity = 0,
+					ManageInventoryMethod = ManageInventoryMethod.ManageStock,
+					BackorderMode = BackorderMode.AllowQtyBelow0AndNotifyCustomer
+				}
+			};
+
+			var result = Search(new CatalogSearchQuery().AvailableOnly(true), products);
+			Assert.That(result.Hits.Count, Is.EqualTo(2));
+		}
+
+		[Test]
+		public void LinqSearch_filter_with_rating()
+		{
+			var products = new List<Product>
+			{
+				new SearchProduct(1),
+				new SearchProduct(2)
+				{
+					ApprovedTotalReviews = 3,
+					ApprovedRatingSum = 12
+				},
+				new SearchProduct(3)
+				{
+					ApprovedTotalReviews = 1,
+					ApprovedRatingSum = 3
+				},
+				new SearchProduct(4)
+				{
+					ApprovedTotalReviews = 1,
+					ApprovedRatingSum = 2
+				}
+			};
+
+			var result = Search(new CatalogSearchQuery().WithRating(3.0, null), products);
+			Assert.That(result.Hits.Count, Is.EqualTo(2));
+
+			result = Search(new CatalogSearchQuery().WithRating(4.0, null), products);
+			Assert.That(result.Hits.Count, Is.EqualTo(1));
+		}
+
+		[Test]
+		public void LinqSearch_filter_with_deliverytime_ids()
+		{
+			var products = new List<Product>
+			{
+				new SearchProduct(1),
+				new SearchProduct(2) { DeliveryTimeId = 16 },
+				new SearchProduct(3) { DeliveryTimeId = 16 },
+				new SearchProduct(4) { DeliveryTimeId = 9 }
+			};
+
+			var result = Search(new CatalogSearchQuery().WithDeliveryTimeIds(new int[] { 16, 9 }), products);
+			Assert.That(result.Hits.Count, Is.EqualTo(3));
+
+			result = Search(new CatalogSearchQuery().WithDeliveryTimeIds(new int[] { 9 }), products);
+			Assert.That(result.Hits.Count, Is.EqualTo(1));
 		}
 
 		#endregion

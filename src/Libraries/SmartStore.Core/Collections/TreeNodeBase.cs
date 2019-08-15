@@ -14,12 +14,75 @@ namespace SmartStore.Collections
 		private int? _depth = null;
 		private int _index = -1;
 
-		private IDictionary<string, object> _metadata;
+		protected object _id;
+		private IDictionary<object, TreeNodeBase<T>> _idNodeMap;
+
+		protected IDictionary<string, object> _metadata;
 		private readonly static ContextState<Dictionary<string, object>> _contextState = new ContextState<Dictionary<string, object>>("TreeNodeBase.ThreadMetadata");
 
 		public TreeNodeBase()
 		{
 		}
+
+		#region Id
+
+		public object Id
+		{
+			get
+			{
+				return _id;
+			}
+			set
+			{
+				_id = value;
+
+				if (_parent != null)
+				{
+					var map = GetIdNodeMap();
+
+					if (_id != null && map.ContainsKey(_id))
+					{
+						// Remove old id from map
+						map.Remove(_id);
+					}
+
+					if (value != null)
+					{
+						map[value] = this;
+					}
+				}
+			}
+		}
+
+		public T SelectNodeById(object id)
+		{
+			if (id == null || IsLeaf)
+				return null;
+
+			var map = GetIdNodeMap();
+			var node = (T)map?.Get(id);
+
+			if (node != null && !this.IsAncestorOfOrSelf(node))
+			{
+				// Found node is NOT a child of this node
+				return null;
+			}
+
+			return node;
+		}
+
+		private IDictionary<object, TreeNodeBase<T>> GetIdNodeMap()
+		{
+			var map = this.Root._idNodeMap;
+			if (map == null)
+			{
+				map = this.Root._idNodeMap = new Dictionary<object, TreeNodeBase<T>>();
+			}
+
+			return map;
+		}
+
+		#endregion
 
 		#region Metadata
 
@@ -76,7 +139,12 @@ namespace SmartStore.Collections
 					break;
 			}
 
-			return (TMetadata)metadata;
+            if (metadata != null)
+            {
+                return (TMetadata)metadata;
+            }
+
+            return default(TMetadata);
 		}
 
 		private bool TryGetMetadataForNode(TreeNodeBase<T> node, string key, out object metadata)
@@ -137,8 +205,11 @@ namespace SmartStore.Collections
 		{
 			Guard.NotNull(newParent, nameof(newParent));
 
+			var prevParent = _parent;
+
 			if (_parent != null)
 			{
+				// Detach from parent
 				_parent.Remove((T)this);
 			}
 
@@ -155,6 +226,74 @@ namespace SmartStore.Collections
 			}
 
 			_parent = newParent;
+
+			FixIdNodeMap(prevParent, newParent);
+		}
+
+		/// <summary>
+		/// Responsible for propagating node ids when detaching/attaching nodes
+		/// </summary>
+		private void FixIdNodeMap(T prevParent, T newParent)
+		{
+			ICollection<TreeNodeBase<T>> keyedNodes = null;
+
+			if (prevParent != null)
+			{
+				// A node is moved. We need to detach first.
+				keyedNodes = new List<TreeNodeBase<T>>();
+
+				// Detach ids from prev map
+				var prevMap = prevParent.GetIdNodeMap();
+
+				Traverse(x => 
+				{
+					// Collect all child node's ids
+					if (x._id != null)
+					{
+						keyedNodes.Add(x);
+						if (prevMap.ContainsKey(x._id))
+						{
+							// Remove from map
+							prevMap.Remove(x._id);
+						}
+					}
+				}, true);
+			}
+
+			if (keyedNodes == null && _idNodeMap != null)
+			{
+				// An orphan/root node is attached
+				keyedNodes = _idNodeMap.Values;
+			}
+
+			if (newParent != null)
+			{
+				// Get new *root map
+				var map = newParent.GetIdNodeMap();
+
+				// Merge *this map with *root map
+				if (keyedNodes != null)
+				{
+					foreach (var node in keyedNodes)
+					{
+						map[node._id] = node;
+					}
+
+					// Get rid of *this map after memorizing keyed nodes
+					if (_idNodeMap != null)
+					{
+						_idNodeMap.Clear();
+						_idNodeMap = null;
+					}
+				}
+
+				if (prevParent == null && _id != null)
+				{
+					// When *this was a root, but is keyed, then *this id
+					// was most likely missing in the prev id-node-map.
+					map[_id] = (T)this;
+				}
+			}
 		}
 
 		[JsonIgnore]
@@ -379,11 +518,10 @@ namespace SmartStore.Collections
 				var node = (T)this;
 				do
 				{
-					trail.Add(node);
+					trail.Insert(0, node);
 					node = node._parent;
 				} while (node != null);
-
-				trail.Reverse();
+				
 				return trail;
 			}
 		}
@@ -497,7 +635,7 @@ namespace SmartStore.Collections
 		}
 
 		/// <summary>
-		/// Selects all nodes (recursively) with match the given <c>predicate</c>
+		/// Selects all nodes (recursively) witch match the given <c>predicate</c>
 		/// </summary>
 		/// <param name="predicate">The predicate to match against</param>
 		/// <returns>A readonly collection of node matches</returns>
@@ -528,6 +666,8 @@ namespace SmartStore.Collections
 				var list = node._parent?._children;
 				if (list.Remove(node))
 				{
+					node.FixIdNodeMap(node._parent, null);
+
 					FixIndexes(list, node._index, -1);
 
 					node._index = -1;
@@ -544,6 +684,8 @@ namespace SmartStore.Collections
 			{
 				_children.Clear();
 			}
+
+			FixIdNodeMap(_parent, null);
 		}
 
 		public void Traverse(Action<T> action, bool includeSelf = false)
@@ -576,7 +718,7 @@ namespace SmartStore.Collections
 			}
 		}
 
-		protected IEnumerable<T> FlattenNodes(bool includeSelf = true)
+		public IEnumerable<T> FlattenNodes(bool includeSelf = true)
 		{
 			return this.FlattenNodes(null, includeSelf);
 		}

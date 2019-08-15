@@ -41,7 +41,7 @@ namespace SmartStore.Web.Framework.Filters
 			// don't provide custom errors if the action has some custom code to handle exceptions
 			if (!filterContext.ActionDescriptor.GetCustomAttributes(typeof(HandleErrorAttribute), false).Any())
 			{
-				if (!filterContext.ExceptionHandled && filterContext.Exception != null && filterContext.HttpContext.IsCustomErrorEnabled)
+				if (!filterContext.ExceptionHandled && filterContext.Exception != null)
 				{
 					if (ShouldHandleException(filterContext.Exception))
 					{
@@ -90,6 +90,8 @@ namespace SmartStore.Web.Framework.Filters
 										ViewData = new ViewDataDictionary<HandleErrorInfo>(new HandleErrorInfo(filterContext.Exception, controllerName, actionName)),
 										TempData = filterContext.Controller.TempData
 									};
+
+									_workContext.Value.IsAdmin = false;
 								}
 
 								filterContext.ExceptionHandled = true;
@@ -110,7 +112,7 @@ namespace SmartStore.Web.Framework.Filters
 				// handle not found (404) from within the MVC pipeline (only called when HttpNotFoundResult is returned from actions)
 				var requestContext = filterContext.RequestContext;
 				var url = requestContext.HttpContext.Request.RawUrl;
-				
+
 				filterContext.Result = new ViewResult
 				{
 					ViewName = "NotFound",
@@ -118,6 +120,9 @@ namespace SmartStore.Web.Framework.Filters
 					ViewData = new ViewDataDictionary<HandleErrorInfo>(new HandleErrorInfo(new HttpException(404, "The resource does not exist."), descriptor.ActionName, descriptor.ControllerDescriptor.ControllerName)),
 					TempData = filterContext.Controller.TempData
 				};
+
+				_workContext.Value.IsAdmin = false;
+
 				requestContext.HttpContext.Response.StatusCode = (int)HttpStatusCode.NotFound;
 
 				// prevent IIS 7.0 classic mode from handling the 404/500 itself

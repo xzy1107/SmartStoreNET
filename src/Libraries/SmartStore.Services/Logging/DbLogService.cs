@@ -88,8 +88,8 @@ namespace SmartStore.Services.Logging
 			string logger, 
 			string message, 
 			LogLevel? logLevel, 
-			int pageIndex, int 
-			pageSize)
+			int pageIndex, 
+			int pageSize)
 		{
 			// force flush to get most recent entries
 			_loggerFactory.FlushAll();
@@ -140,15 +140,9 @@ namespace SmartStore.Services.Logging
 						where logIds.Contains(l.Id)
 						select l;
 			var logItems = query.ToList();
-			//sort by passed identifiers
-			var sortedLogItems = new List<Log>();
-			foreach (int id in logIds)
-			{
-				var log = logItems.Find(x => x.Id == id);
-				if (log != null)
-					sortedLogItems.Add(log);
-			}
-			return sortedLogItems;
+
+			// sort by passed identifier sequence
+			return logItems.OrderBySequence(logIds).ToList();
 		}
 	}
 }

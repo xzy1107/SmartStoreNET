@@ -1,19 +1,16 @@
 ﻿using AutoMapper;
 using SmartStore.Admin.Models.Blogs;
 using SmartStore.Admin.Models.Catalog;
-using SmartStore.Admin.Models.Cms;
 using SmartStore.Admin.Models.Common;
 using SmartStore.Admin.Models.Customers;
 using SmartStore.Admin.Models.Directory;
 using SmartStore.Admin.Models.Discounts;
-using SmartStore.Admin.Models.ExternalAuthentication;
 using SmartStore.Admin.Models.Forums;
 using SmartStore.Admin.Models.Localization;
 using SmartStore.Admin.Models.Logging;
 using SmartStore.Admin.Models.Messages;
 using SmartStore.Admin.Models.News;
 using SmartStore.Admin.Models.Orders;
-using SmartStore.Admin.Models.Payments;
 using SmartStore.Admin.Models.Plugins;
 using SmartStore.Admin.Models.Polls;
 using SmartStore.Admin.Models.Settings;
@@ -24,7 +21,6 @@ using SmartStore.Admin.Models.Topics;
 using SmartStore.Admin.Models.Themes;
 using SmartStore.Core.Domain.Blogs;
 using SmartStore.Core.Domain.Catalog;
-using SmartStore.Core.Domain.Cms;
 using SmartStore.Core.Domain.Common;
 using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Directory;
@@ -42,13 +38,11 @@ using SmartStore.Core.Domain.Stores;
 using SmartStore.Core.Domain.Tax;
 using SmartStore.Core.Domain.Topics;
 using SmartStore.Core.Plugins;
-using SmartStore.Services.Authentication.External;
-using SmartStore.Services.Cms;
-using SmartStore.Services.Messages;
-using SmartStore.Services.Payments;
 using SmartStore.Services.Shipping;
 using SmartStore.Services.Tax;
 using SmartStore.Core.Domain.Themes;
+using SmartStore.Services.Common;
+using SmartStore.Core.Domain.Payments;
 
 namespace SmartStore.Admin
 {
@@ -550,12 +544,21 @@ namespace SmartStore.Admin
 
         public static AddressModel ToModel(this Address entity)
         {
-            var addressModel = Mapper.Map<Address, AddressModel>(entity);
-            addressModel.EmailMatch = entity.Email;
-            return addressModel;
+            return ToModel(entity, null);
         }
 
-        public static Address ToEntity(this AddressModel model)
+		public static AddressModel ToModel(this Address entity, IAddressService addressService)
+		{
+			var addressModel = Mapper.Map<Address, AddressModel>(entity);
+			addressModel.EmailMatch = entity.Email;
+
+			if(addressService != null)
+				addressModel.FormattedAddress = addressService.FormatAddress(entity, true);
+
+			return addressModel;
+		}
+
+		public static Address ToEntity(this AddressModel model)
         {
             return Mapper.Map<AddressModel, Address>(model);
         }
@@ -912,7 +915,8 @@ namespace SmartStore.Admin
         }
 
 
-        public static MediaSettingsModel ToModel(this MediaSettings entity)
+
+		public static MediaSettingsModel ToModel(this MediaSettings entity)
         {
             return Mapper.Map<MediaSettings, MediaSettingsModel>(entity);
         }
@@ -950,13 +954,24 @@ namespace SmartStore.Admin
         {
             return Mapper.Map(model, destination);
         }
+		public static CustomerUserSettingsModel.PrivacySettingsModel ToModel(this PrivacySettings entity)
+		{
+			return Mapper.Map<PrivacySettings, CustomerUserSettingsModel.PrivacySettingsModel>(entity);
+		}
+		public static PrivacySettings ToEntity(this CustomerUserSettingsModel.PrivacySettingsModel model)
+		{
+			return Mapper.Map<CustomerUserSettingsModel.PrivacySettingsModel, PrivacySettings>(model);
+		}
+		public static PrivacySettings ToEntity(this CustomerUserSettingsModel.PrivacySettingsModel model, PrivacySettings destination)
+		{
+			return Mapper.Map(model, destination);
+		}
+		#endregion
 
-        #endregion
 
+		#region Plugins
 
-        #region Plugins
-
-        public static PluginModel ToModel(this PluginDescriptor entity)
+		public static PluginModel ToModel(this PluginDescriptor entity)
         {
             return Mapper.Map<PluginDescriptor, PluginModel>(entity);
         }

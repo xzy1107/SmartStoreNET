@@ -9,6 +9,7 @@ using SmartStore.Core;
 using SmartStore.Core.Infrastructure;
 using SmartStore.Core.Themes;
 using SmartStore.Utilities;
+using SmartStore.Web.Framework.Theming.Assets;
 
 namespace SmartStore.Web.Framework.Theming
 {
@@ -25,19 +26,34 @@ namespace SmartStore.Web.Framework.Theming
 		{
 			ThemesBasePath = CommonHelper.GetAppSetting<string>("sm:ThemesBasePath", "~/Themes/").EnsureEndsWith("/");
 
-			var pattern = @"^{0}(.*)/(.+)(\.)(png|gif|jpg|jpeg|css|scss|less|js|cshtml|svg|json)$".FormatInvariant(ThemesBasePath);
+			var pattern = @"^{0}(.*)/(.+)(\.)(png|gif|jpg|jpeg|css|scss|js|cshtml|svg|json|liquid)(\?base)*$".FormatInvariant(ThemesBasePath);
 			s_inheritableThemeFilePattern = new Regex(pattern, RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-			s_themeVarsPattern = new Regex(@"^~/\.(db|app)/themevars(.scss|.less)$", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-			s_moduleImportsPattern = new Regex(@"^~/\.app/moduleimports.scss$", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+			s_themeVarsPattern = new Regex(@"\.(db|app)/[_]?themevars(.scss)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+			s_moduleImportsPattern = new Regex(@"\.app/[_]?moduleimports.scss", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
 			s_extensionlessPathPattern = new Regex(@"~/(.+)/([^/.]*)$", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
 		}
 
-        internal static bool PathListContainsThemeVars(IEnumerable<string> pathes)
-        {
-            Guard.NotNull(pathes, nameof(pathes));
+		internal static IEnumerable<string> RemoveVirtualImports(IEnumerable<string> virtualPathDependencies)
+		{
+			Guard.NotNull(virtualPathDependencies, nameof(virtualPathDependencies));
 
-            return pathes.Any(x => PathIsThemeVars(x));
-        }
+			// determine the virtual themevars scss import reference
+			var themeVarsFile = virtualPathDependencies.Where(x => ThemeHelper.PathIsThemeVars(x)).FirstOrDefault();
+			var moduleImportsFile = virtualPathDependencies.Where(x => ThemeHelper.PathIsModuleImports(x)).FirstOrDefault();
+
+			if (themeVarsFile == null && moduleImportsFile == null)
+			{
+				// no themevars or moduleimports import... so no special considerations here
+				return virtualPathDependencies;
+			}
+
+			// exclude the special imports from the file dependencies list,
+			// 'cause this one cannot be monitored by the physical file system
+			return virtualPathDependencies
+				.Except((new string[] { themeVarsFile, moduleImportsFile })
+				.Where(x => x.HasValue()))
+				.ToArray();
+		}
 
         internal static bool PathIsThemeVars(string virtualPath)
         {
@@ -51,11 +67,6 @@ namespace SmartStore.Web.Framework.Theming
 
 			if (string.IsNullOrEmpty(virtualPath))
 				return false;
-
-			if (virtualPath[0] != '~')
-			{
-				virtualPath = VirtualPathUtility.ToAppRelative(virtualPath);
-			}
 
 			var match = s_themeVarsPattern.Match(virtualPath);
 			if (match.Success)
@@ -72,17 +83,12 @@ namespace SmartStore.Web.Framework.Theming
 			if (string.IsNullOrEmpty(virtualPath))
 				return false;
 
-			if (virtualPath[0] != '~')
-			{
-				virtualPath = VirtualPathUtility.ToAppRelative(virtualPath);
-			}
-
 			return s_moduleImportsPattern.IsMatch(virtualPath);
 		}
 
 		internal static bool PathIsInheritableThemeFile(string virtualPath)
 		{
-			if (string.IsNullOrEmpty(virtualPath))
+			if (string.IsNullOrWhiteSpace(virtualPath))
 				return false;
 
 			if (virtualPath[0] != '~')
@@ -103,24 +109,52 @@ namespace SmartStore.Web.Framework.Theming
 			return false;
 		}
 
-		internal static IsStyleSheetResult IsStyleSheet(string path)
+		internal static bool IsStyleValidationRequest()
 		{
+			return HttpContext.Current?.Request?.QueryString["validate"] != null;
+		}
+
+		internal static StyleSheetResult IsStyleSheet(string path)
+		{
+			// Handle virtual Sass imports with '?base' query
+			// TBD: (mc) other query params could exist
+			var qindex = path.IndexOf('?');
+			if (qindex > -1)
+			{
+				var pathWithoutQuery = path.Substring(0, qindex);
+				var query = path.Substring(pathWithoutQuery.Length);
+				if (query.StartsWith("?base", StringComparison.OrdinalIgnoreCase))
+				{
+					// Process again, this time without query
+					var result = IsStyleSheet(pathWithoutQuery);
+					result.IsBaseImport = true;
+					return result;
+				}
+			}
+
 			var extension = Path.GetExtension(path).ToLowerInvariant();
 
-			if (extension == ".css")
+			if (extension == ".cshtml")
 			{
-				return new IsStyleSheetResult { Path = path, IsCss = true };
+				// Perf
+				return null;
 			}
-			else if (extension == ".scss")
+			else if (extension == ".css")
 			{
-				return new IsStyleSheetResult { Path = path, IsSass = true };
+				return new StyleSheetResult { Path = path, IsCss = true, Extension = extension };
 			}
-			else if (extension == ".less")
+			else if (extension == ".scss" || extension == ".sass")
 			{
-				return new IsStyleSheetResult { Path = path, IsLess = true };
+				return new StyleSheetResult { Path = path, IsSass = true, Extension = extension };
 			}
 			else if (extension.IsEmpty())
 			{
+				if (path.Contains("/scss/"))
+				{
+					// Bootstrap and other libaries may import SASS files without extension
+					return new StyleSheetResult { Path = path, IsSass = true };
+				}
+				
 				// StyleBundles are  extension-less, so we have to ask 'BundleTable' 
 				// if a style bundle has been registered for the given path.
 				if (s_extensionlessPathPattern.IsMatch(path))
@@ -128,7 +162,7 @@ namespace SmartStore.Web.Framework.Theming
 					var bundle = BundleTable.Bundles.GetBundleFor(path);
 					if (bundle != null && ((bundle is SmartStyleBundle || bundle is StyleBundle)))
 					{
-						return new IsStyleSheetResult { Path = path, IsBundle = true };
+						return new StyleSheetResult { Path = path, IsBundle = true };
 					}
 				}
 			}
@@ -146,43 +180,50 @@ namespace SmartStore.Web.Framework.Theming
 			return EngineContext.Current.Resolve<IStoreContext>().CurrentStore.Id;
 		}
 
-		internal class IsStyleSheetResult
+		internal static string TokenizePath(string virtualPath, out string themeName, out string relativePath, out string query)
 		{
-			public string Path { get; set; }
-			public bool IsCss { get; set; }
-			public bool IsLess { get; set; }
-			public bool IsSass { get; set; }
-			public bool IsBundle { get; set; }
+			themeName = null;
+			relativePath = null;
+			query = null;
 
-			public string Extension
+			var unrooted = virtualPath.Substring(ThemesBasePath.Length); // strip "~/Themes/"
+			themeName = unrooted.Substring(0, unrooted.IndexOf('/'));
+			relativePath = unrooted.Substring(themeName.Length + 1);
+
+			var idx = relativePath.IndexOf('?');
+			if (idx > 0)
 			{
-				get
-				{
-					if (IsSass)
-						return ".scss";
-					else if (IsLess)
-						return ".less";
-					else if (IsBundle)
-						return "";
-
-					return ".css";
-				}
+				query = relativePath.Substring(idx + 1);
+				relativePath = relativePath.Substring(0, idx);
 			}
 
-			public bool IsPreprocessor
-			{
-				get { return IsLess || IsSass; }
-			}
+			// strip out query
+			return "{0}{1}/{2}".FormatCurrent(ThemesBasePath, themeName, relativePath);
+		}
+	}
 
-			public bool IsThemeVars
-			{
-				get { return IsPreprocessor && ThemeHelper.PathIsThemeVars(Path); }
-			}
+	internal class StyleSheetResult
+	{
+		public string Path { get; set; }
+		public string Extension { get; set; }
+		public bool IsCss { get; set; }
+		public bool IsSass { get; set; }
+		public bool IsBundle { get; set; }
+		public bool IsBaseImport { get; set; }
 
-			public bool IsModuleImports
-			{
-				get { return IsSass && ThemeHelper.PathIsModuleImports(Path); }
-			}
+		public bool IsPreprocessor
+		{
+			get { return IsSass; }
+		}
+
+		public bool IsThemeVars
+		{
+			get { return IsPreprocessor && ThemeHelper.PathIsThemeVars(Path); }
+		}
+
+		public bool IsModuleImports
+		{
+			get { return IsSass && ThemeHelper.PathIsModuleImports(Path); }
 		}
 	}
 }

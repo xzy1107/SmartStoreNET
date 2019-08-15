@@ -6,18 +6,16 @@
 @using SmartStore.Web;
 
 @{
-	Layout = "_ColumnsOne";
+	Layout = "_Layout";
 
-	Html.AddTitleParts(Model.MetaTitle.NullEmpty() ?? Model.Name);
-	Html.AddMetaDescriptionParts(Model.MetaDescription);
-	Html.AddMetaKeywordParts(Model.MetaKeywords);
+	Html.AddTitleParts(Model.MetaTitle.Value.NullEmpty() ?? Model.Name);
+	Html.AddMetaDescriptionParts(Model.MetaDescription.Value);
+	Html.AddMetaKeywordParts(Model.MetaKeywords.Value);
 
-	Html.AddScriptParts("~/Themes/Flex/Scripts/public.product.js");
-
+	var canonicalUrl = Url.RouteUrl("Product", new { SeName = Model.SeName }, this.Request.Url.Scheme);
 	if (Model.CanonicalUrlsEnabled)
 	{
-		var productUrl = Url.RouteUrl("Product", new { SeName = Model.SeName }, this.Request.Url.Scheme);
-		Html.AddCanonicalUrlParts(productUrl);
+		Html.AddCanonicalUrlParts(canonicalUrl);
 	}
 
 	string updateUrl = Url.Action("UpdateProductDetails", "Product", new
@@ -27,6 +25,27 @@
 		itemType = (string)null // TODO: (mc) WTF!?
 	});
 
+	var shortDescription = Model.ShortDescription.Value.HasValue() ? Model.ShortDescription : Model.MetaDescription;
+
+	// FB OpenGraph og:*
+	Html.AddCustomHeadParts("<meta property='og:site_name' content='{0}' />".FormatInvariant(CommonServices.StoreContext.CurrentStore.Name));
+	Html.AddCustomHeadParts("<meta property='og:type' content='{0}' />".FormatInvariant(Model.ProductType == ProductType.SimpleProduct ? "product" : "product.group"));
+	Html.AddCustomHeadParts("<meta property='og:url' content='{0}' />".FormatInvariant(canonicalUrl));
+	Html.AddCustomHeadParts("<meta property='og:site' content='{0}' />".FormatInvariant(Url.RouteUrl("HomePage", null, this.Request.Url.Scheme)));
+	Html.AddCustomHeadParts("<meta property='og:title' content='{0}' />".FormatInvariant(Model.Name.Value));
+	if (shortDescription.Value.HasValue())
+	{
+		Html.AddCustomHeadParts("<meta property='og:description' content='{0}' />".FormatInvariant(shortDescription.Value));
+	}
+
+	// Twitter card
+	Html.AddCustomHeadParts("<meta property='twitter:card' content='product' />");
+	Html.AddCustomHeadParts("<meta property='twitter:title' content='{0}' />".FormatInvariant(Model.Name));
+	if (shortDescription.Value.HasValue())
+	{
+		Html.AddCustomHeadParts("<meta property='twitter:description' content='{0}' />".FormatInvariant(shortDescription.Value));
+	}
+
 	/* TODO: (mc)
 	 * - Badges
 	 * - GTIN: user must specifiy the GTIN type on product level (gtin12, gtin13 etc.). See https://schema.org/Offer
@@ -35,38 +54,44 @@
 }
 
 <div class="page product-details-page">
-	<!-- Breadcrumb -->
-	@{ Html.RenderAction("ProductBreadcrumb", "Catalog", new { productId = Model.Id }); }
-
 	@{ Html.RenderWidget("productdetails_top"); }
 
-	<article class="pd page-body">
-		<div id="main-update-container" class="update-container" data-url="@updateUrl" itemscope itemtype="http://schema.org/Product">
+	<article class="pd page-body" itemscope itemtype="http://schema.org/Product">
+		<div id="main-update-container" class="update-container" data-url="@updateUrl">
 			@using (Html.BeginRouteForm("Product", new { SeName = Model.SeName }, FormMethod.Post, new { id = "pd-form" }))
             {
 			<!-- Top Content: Picture, Description, Attrs, Variants, Bundle Items, Price etc. -->
 				<section class="row pd-section pd-section-top">
 					<!-- Picture -->
-					<div class="col-xs-12 col-md-6 col-lg-7 pd-data-col">
-						<div id="pd-gallery-container">
+					<div class="col-12 col-md-6 col-lg-7 pd-data-col">
+                        @{ Html.RenderWidget("productdetails_pictures_top"); }
+						
+                        <div id="pd-gallery-container">
 							@{ Html.RenderPartial("Product.Picture", Model.DetailsPictureModel); }
 						</div>
+                        
+                        @{ Html.RenderWidget("productdetails_pictures_bottom"); }
+
 					</div>
 					<!-- Sidebar: Info, Price, Buttons etc. -->
-					<aside class="col-xs-12 col-md-6 col-lg-5 pd-info-col zoom-window-container">
+					<aside class="col-12 col-md-6 col-lg-5 pd-info-col zoom-window-container">
+
+                        @{ Html.RenderWidget("productdetails_info_top"); }
 						<!-- Title/Brand/ReviewSummary -->
 						@{ Html.RenderPartial("Product.Info", Model); }
 
 						<!-- Bundle Items -->
 						@if (Model.ProductType == ProductType.BundledProduct)
 						{
-							<div class="pd-bundle-container pd-group card card-shadow">
+							<div class="pd-bundle-container pd-group card shadow-sm">
 								@{ Html.RenderPartial("Product.Bundle", Model); }
 							</div>
 						}
 
 						@if (Model.ProductType != ProductType.GroupedProduct)
-						{
+                        {
+                            Html.RenderWidget("productdetails_attrs_top");
+
 							<!-- Product attributes (SKU, EAN, Weight etc.) -->
 							<div class="pd-attrs-container" data-partial="Attrs">
 								@{ Html.RenderPartial("Product.Attrs", Model); }
@@ -78,50 +103,13 @@
 
 						@if (Model.ProductType == ProductType.GroupedProduct)
 						{
-							var showActionLinks = Model.AskQuestionEnabled || Model.TellAFriendEnabled || Model.CompareEnabled;
-							if (showActionLinks)
-							{
-								<ul class="pd-action-links pd-group list-unstyled">
-									@if (Model.AskQuestionEnabled)
-									{
-										<li>
-											<a class="pretty-link action-ask-question" href="@Url.Action("AskQuestion", new { id = Model.Id })" rel="nofollow">
-												<i class="fa fa-fw fa-envelope"></i>
-												<span>@T("Products.AskQuestion")</span>
-											</a>
-										</li>
-									}
-									@if (Model.TellAFriendEnabled)
-									{
-										<li>
-											<a class="pretty-link action-tell" href="@Url.Action("EmailAFriend", new { id = Model.Id })" rel="nofollow">
-												<i class="fa fa-fw fa-bullhorn"></i>
-												<span>@T("Products.EmailAFriend")</span>
-											</a>
-										</li>
-									}
-									@if (Model.CompareEnabled)
-									{
-										<li>
-											<a data-href="@Url.Action("AddProductToCompare", "Catalog", new { id = Model.Id })" 
-											   href="#" 
-											   class="pretty-link action-compare ajax-cart-link" 
-											   rel="nofollow"
-											   data-type="compare"
-											   data-action="add">
-												<i class="fa fa-fw fa-retweet"></i>
-												<span>@T("Products.Compare.AddToCompareList")</span>
-											</a>
-										</li>
-									}
-								</ul>
-							}
+							Html.RenderPartial("Product.Offer.Actions.Misc", Model);
 						}
 
 						<!-- social share -->
 						@if (Model.ProductShareCode.HasValue())
 						{
-							<div class="pd-share d-flex justify-content-@(Model.ProductType == ProductType.GroupedProduct ? "start m-t-2" : "center m-t-1")">
+							<div class="pd-share d-flex justify-content-@(Model.ProductType == ProductType.GroupedProduct ? "start mt-4" : "center mt-3")">
 								@Html.Raw(Model.ProductShareCode)
 							</div>
 						}
@@ -129,10 +117,12 @@
 						@if (Model.DisplayAdminLink)
 						{
 							<a class="btn btn-secondary btn-flat btn-edit-product" href="@Url.Action("Edit", "Product", new { id = Model.Id, area = "admin" })" target="admin-product" rel="nofollow">
-								<i class="fa fa-gear"></i>
+								<i class="fa fa-cog"></i>
 								<span>@T("Common.Catalog.EditProduct")</span>
 							</a>
 						}
+
+                        @{ Html.RenderWidget("productdetails_info_bottom"); }
 					</aside>
 				</section>
 
@@ -161,14 +151,23 @@
 
 		<!-- Bottom Content: Full Description, Specification, Review etc. -->
 		<section class="pd-section pd-section-bottom">
-			<!-- Tabs -->
-			@{ Html.RenderPartial("Product.Tabs", Model); }
-			<!-- Tags -->
-			@{ Html.RenderAction("ProductTags", new { productId = Model.Id }); }
-			<!-- Related products -->
-			@{ Html.RenderAction("RelatedProducts", new { productId = Model.Id }); }
-			<!-- Products also purchased -->
-			@{ Html.RenderAction("ProductsAlsoPurchased", new { productId = Model.Id }); }
+			@{
+                <!-- Tabs -->
+                Html.RenderPartial("Product.Tabs", Model);
+                Html.RenderWidget("productdetail_tabs_after");
+
+                <!-- Tags -->
+                Html.RenderAction("ProductTags", new { productId = Model.Id });
+                Html.RenderWidget("productdetail_tags_after");
+
+                <!-- Related products -->
+                Html.RenderAction("RelatedProducts", new { productId = Model.Id });
+                Html.RenderWidget("productdetail_related_products_after");
+
+                <!-- Products also purchased -->
+                Html.RenderAction("ProductsAlsoPurchased", new { productId = Model.Id });
+                Html.RenderWidget("productdetail_also_purchased_after");
+            }
 		</section>
 	</article>
 
@@ -184,7 +183,7 @@
             galleryStartIndex: @(Model.DetailsPictureModel.GalleryStartIndex),
             enableZoom: toBool('@(Model.DetailsPictureModel.DefaultPictureZoomEnabled)')
         };
-
+		
     	$('#pd-form').productDetail(settings);
     });
 </script>

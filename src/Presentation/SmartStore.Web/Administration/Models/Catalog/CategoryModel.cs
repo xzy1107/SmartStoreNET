@@ -2,20 +2,17 @@
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Web.Mvc;
+using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Admin.Models.Customers;
-using SmartStore.Admin.Models.Stores;
-using SmartStore.Admin.Validators.Catalog;
 using SmartStore.Core.Domain.Discounts;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Localization;
 using SmartStore.Web.Framework.Modelling;
-using Telerik.Web.Mvc;
 
 namespace SmartStore.Admin.Models.Catalog
 {
     [Validator(typeof(CategoryValidator))]
-    public class CategoryModel : TabbableModel, ILocalizedModel<CategoryLocalizedModel>
+    public class CategoryModel : TabbableModel, ILocalizedModel<CategoryLocalizedModel>, IStoreSelector, IAclSelector
     {
         public CategoryModel()
         {
@@ -41,6 +38,10 @@ namespace SmartStore.Admin.Models.Catalog
 		[SmartResourceDisplayName("Admin.Catalog.Categories.Fields.BottomDescription")]
 		[AllowHtml]
 		public string BottomDescription { get; set; }
+
+        [SmartResourceDisplayName("Admin.Catalog.Categories.Fields.ExternalLink")]
+        [AllowHtml, UIHint("Link")]
+        public string ExternalLink { get; set; }
 
         [SmartResourceDisplayName("Admin.Catalog.Categories.Fields.BadgeText")]
         [AllowHtml]
@@ -79,7 +80,7 @@ namespace SmartStore.Admin.Models.Catalog
 
         [UIHint("Picture")]
         [SmartResourceDisplayName("Admin.Catalog.Categories.Fields.Picture")]
-        public int PictureId { get; set; }
+        public int? PictureId { get; set; }
 
         [SmartResourceDisplayName("Admin.Catalog.Categories.Fields.PageSize")]
         public int? PageSize { get; set; }
@@ -99,7 +100,7 @@ namespace SmartStore.Admin.Models.Catalog
         [SmartResourceDisplayName("Admin.Catalog.Categories.Fields.Deleted")]
         public bool Deleted { get; set; }
 
-        [SmartResourceDisplayName("Admin.Catalog.Categories.Fields.DisplayOrder")]
+        [SmartResourceDisplayName("Common.DisplayOrder")]
         public int DisplayOrder { get; set; }
 
 		[SmartResourceDisplayName("Common.CreatedOn")]
@@ -112,23 +113,20 @@ namespace SmartStore.Admin.Models.Catalog
 
         public string Breadcrumb { get; set; }
 
-        //ACL
-        [SmartResourceDisplayName("Admin.Catalog.Categories.Fields.SubjectToAcl")]
+        // ACL
         public bool SubjectToAcl { get; set; }
-        [SmartResourceDisplayName("Admin.Catalog.Categories.Fields.AclCustomerRoles")]
-        public List<CustomerRoleModel> AvailableCustomerRoles { get; set; }
+        public IEnumerable<SelectListItem> AvailableCustomerRoles { get; set; }
         public int[] SelectedCustomerRoleIds { get; set; }
 
-		//Store mapping
+		// Store mapping
 		[SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
 		public bool LimitedToStores { get; set; }
-		[SmartResourceDisplayName("Admin.Common.Store.AvailableFor")]
-		public List<StoreModel> AvailableStores { get; set; }
+		public IEnumerable<SelectListItem> AvailableStores { get; set; }
 		public int[] SelectedStoreIds { get; set; }
 
         public string ParentCategoryBreadcrumb { get; set; }
 
-        //discounts
+        // discounts
         public List<Discount> AvailableDiscounts { get; set; }
         public int[] SelectedDiscountIds { get; set; }
 
@@ -160,7 +158,7 @@ namespace SmartStore.Admin.Models.Catalog
             [SmartResourceDisplayName("Admin.Catalog.Categories.Products.Fields.IsFeaturedProduct")]
             public bool IsFeaturedProduct { get; set; }
 
-            [SmartResourceDisplayName("Admin.Catalog.Categories.Products.Fields.DisplayOrder")]
+            [SmartResourceDisplayName("Common.DisplayOrder")]
             //we don't name it DisplayOrder because Telerik has a small bug 
             //"if we have one more editor with the same name on a page, it doesn't allow editing"
             //in our case it's category.DisplayOrder
@@ -210,4 +208,11 @@ namespace SmartStore.Admin.Models.Catalog
         public string SeName { get; set; }
     }
 
+	public partial class CategoryValidator : AbstractValidator<CategoryModel>
+	{
+		public CategoryValidator()
+		{
+			RuleFor(x => x.Name).NotEmpty();
+		}
+	}
 }

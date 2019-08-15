@@ -1,28 +1,26 @@
-﻿using System.Collections.Generic;
-using System.Web.Mvc;
-using System.Web.Script.Serialization;
+﻿using FluentValidation;
 using FluentValidation.Attributes;
 using Newtonsoft.Json;
-using SmartStore.Admin.Models.Stores;
-using SmartStore.Admin.Validators.Messages;
 using SmartStore.Collections;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Localization;
 using SmartStore.Web.Framework.Modelling;
+using System.Collections.Generic;
+using System.Web.Mvc;
+using System.Web.Script.Serialization;
 
 namespace SmartStore.Admin.Models.Messages
 {
     [Validator(typeof(MessageTemplateValidator))]
-    public class MessageTemplateModel : EntityModelBase, ILocalizedModel<MessageTemplateLocalizedModel>
+    public class MessageTemplateModel : TabbableModel, ILocalizedModel<MessageTemplateLocalizedModel>, IStoreSelector
     {
         public MessageTemplateModel()
         {
             Locales = new List<MessageTemplateLocalizedModel>();
             AvailableEmailAccounts = new List<EmailAccountModel>();
-			AvailableStores = new List<StoreModel>();
-        }
+		}
 
-        [SmartResourceDisplayName("Admin.ContentManagement.MessageTemplates.Fields.AllowedTokens")]
+		[SmartResourceDisplayName("Admin.ContentManagement.MessageTemplates.Fields.AllowedTokens")]
         [ScriptIgnore, JsonIgnore]
         public TreeNode<string> TokensTree { get; set; }
 
@@ -30,7 +28,19 @@ namespace SmartStore.Admin.Models.Messages
         [AllowHtml]
         public string Name { get; set; }
 
-        [SmartResourceDisplayName("Admin.ContentManagement.MessageTemplates.Fields.BccEmailAddresses")]
+		[SmartResourceDisplayName("Admin.System.QueuedEmails.Fields.To")]
+		[AllowHtml]
+		public string To { get; set; }
+
+		[SmartResourceDisplayName("Admin.System.QueuedEmails.Fields.ReplyTo")] 
+		[AllowHtml]
+		public string ReplyTo { get; set; }
+
+		[SmartResourceDisplayName("Admin.ContentManagement.MessageTemplates.Fields.AllowedTokens")]
+		[ScriptIgnore, JsonIgnore]
+		public string LastModelTree { get; set; }
+
+		[SmartResourceDisplayName("Admin.ContentManagement.MessageTemplates.Fields.BccEmailAddresses")]
         [AllowHtml]
         public string BccEmailAddresses { get; set; }
 
@@ -43,7 +53,6 @@ namespace SmartStore.Admin.Models.Messages
         public string Body { get; set; }
 
         [SmartResourceDisplayName("Common.Active")]
-        [AllowHtml]
         public bool IsActive { get; set; }
 
         [SmartResourceDisplayName("Admin.ContentManagement.MessageTemplates.Fields.EmailAccount")]
@@ -61,22 +70,29 @@ namespace SmartStore.Admin.Models.Messages
 		[SmartResourceDisplayName("Admin.ContentManagement.MessageTemplates.Fields.Attachment3FileId")]
 		public int? Attachment3FileId { get; set; }
 
-		//Store mapping
+		// Store mapping
 		[SmartResourceDisplayName("Admin.Common.Store.LimitedTo")]
 		public bool LimitedToStores { get; set; }
-		[SmartResourceDisplayName("Admin.Common.Store.AvailableFor")]
-		public List<StoreModel> AvailableStores { get; set; }
+		public IEnumerable<SelectListItem> AvailableStores { get; set; }
 		public int[] SelectedStoreIds { get; set; }
 
-        public IList<MessageTemplateLocalizedModel> Locales { get; set; }
+		public IList<MessageTemplateLocalizedModel> Locales { get; set; }
         public IList<EmailAccountModel> AvailableEmailAccounts { get; set; }
-    }
+	}
 
     public class MessageTemplateLocalizedModel : ILocalizedModelLocal
     {
         public int LanguageId { get; set; }
 
-        [SmartResourceDisplayName("Admin.ContentManagement.MessageTemplates.Fields.BccEmailAddresses")]
+		[SmartResourceDisplayName("Admin.System.QueuedEmails.Fields.To")]
+		[AllowHtml]
+		public string To { get; set; }
+
+		[SmartResourceDisplayName("Admin.System.QueuedEmails.Fields.ReplyTo")]
+		[AllowHtml]
+		public string ReplyTo { get; set; }
+
+		[SmartResourceDisplayName("Admin.ContentManagement.MessageTemplates.Fields.BccEmailAddresses")]
         [AllowHtml]
         public string BccEmailAddresses { get; set; }
 
@@ -99,5 +115,14 @@ namespace SmartStore.Admin.Models.Messages
 
 		[SmartResourceDisplayName("Admin.ContentManagement.MessageTemplates.Fields.Attachment3FileId")]
 		public int? Attachment3FileId { get; set; }
+    }
+
+    public partial class MessageTemplateValidator : AbstractValidator<MessageTemplateModel>
+    {
+        public MessageTemplateValidator()
+        {
+            RuleFor(x => x.Subject).NotEmpty();
+            RuleFor(x => x.Body).NotEmpty();
+        }
     }
 }

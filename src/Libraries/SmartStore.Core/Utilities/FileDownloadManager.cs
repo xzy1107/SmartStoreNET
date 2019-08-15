@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 using SmartStore.Core;
+using SmartStore.Core.IO;
 using SmartStore.Core.Logging;
 
 namespace SmartStore.Utilities
@@ -22,7 +23,7 @@ namespace SmartStore.Utilities
 
 		public FileDownloadManager(HttpRequestBase httpRequest)
 		{
-			this._httpRequest = httpRequest;
+			_httpRequest = httpRequest;
 		}
 
 		/// <summary>
@@ -58,6 +59,7 @@ namespace SmartStore.Utilities
 			if (sendAuthCookie)
 			{
 				req.SetFormsAuthenticationCookie(_httpRequest);
+				req.SetAnonymousIdentCookie(_httpRequest);
 			}
 
 			using (var resp = (HttpWebResponse)req.GetResponse())
@@ -102,10 +104,10 @@ namespace SmartStore.Utilities
 		/// <param name="items">Items to be downloaded</param>
 		public async Task DownloadAsync(FileDownloadManagerContext context, IEnumerable<FileDownloadManagerItem> items)
 		{
-			await DownloadFiles(context, items);
+			await DownloadFilesAsync(context, items);
 		}
 
-		private async Task DownloadFiles(FileDownloadManagerContext context, IEnumerable<FileDownloadManagerItem> items)
+		private async Task DownloadFilesAsync(FileDownloadManagerContext context, IEnumerable<FileDownloadManagerItem> items)
 		{
 			try
 			{
@@ -137,10 +139,12 @@ namespace SmartStore.Utilities
 					}
 				}
 			}
-			catch (Exception exception)
+			catch (Exception ex)
 			{
-				if (context.Logger != null)
-					context.Logger.ErrorsAll(exception);
+                if (context.Logger != null)
+                {
+                    context.Logger.ErrorsAll(ex);
+                }
 			}
 		}
 
@@ -148,43 +152,71 @@ namespace SmartStore.Utilities
 		{
 			try
 			{
-				//HttpResponseMessage response = await client.GetAsync(item.Url, HttpCompletionOption.ResponseHeadersRead);
-				//Task<Stream> task = response.Content.ReadAsStreamAsync();
+				var count = 0;
+				var canceled = false;
+				var bytes = new byte[_bufferSize];
 
-				Task <Stream> task = client.GetStreamAsync(item.Url);
-				await task;
-
-				int count;
-				bool canceled = false;
-				byte[] bytes = new byte[_bufferSize];
-
-				using (var srcStream = task.Result)
-				using (var dstStream = File.OpenWrite(item.Path))
+				using (var response = await client.GetAsync(item.Url))
 				{
-					while ((count = srcStream.Read(bytes, 0, bytes.Length)) != 0 && !canceled)
-					{
-						dstStream.Write(bytes, 0, count);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        if (response.Content.Headers.ContentType != null)
+                        {
+                            var contentType = response.Content.Headers.ContentType.MediaType;
+                            if (contentType.HasValue() && !contentType.IsCaseInsensitiveEqual(item.MimeType))
+                            {
+                                // Update mime type and local path.
+                                var extension = MimeTypes.MapMimeTypeToExtension(contentType).NullEmpty() ?? ".jpg";
 
-						if (context.CancellationToken != null && context.CancellationToken.IsCancellationRequested)
-							canceled = true;
-					}
-				}
+                                item.MimeType = contentType;
+                                item.Path = Path.ChangeExtension(item.Path, extension.EnsureStartsWith("."));
+                            }
+                        }
 
-				item.Success = (!task.IsFaulted && !canceled);
+                        //Task <Stream> task = client.GetStreamAsync(item.Url);
+                        Task<Stream> task = response.Content.ReadAsStreamAsync();
+                        await task;
+
+                        using (var srcStream = task.Result)
+                        using (var dstStream = File.Open(item.Path, FileMode.Create))
+                        {
+                            while ((count = srcStream.Read(bytes, 0, bytes.Length)) != 0 && !canceled)
+                            {
+                                dstStream.Write(bytes, 0, count);
+
+                                if (context.CancellationToken != null && context.CancellationToken.IsCancellationRequested)
+                                {
+                                    canceled = true;
+                                }
+                            }
+                        }
+
+                        item.Success = !task.IsFaulted && !canceled;
+                    }
+                    else
+                    {
+                        item.Success = false;
+                        item.ErrorMessage = response.StatusCode.ToString();
+                    }
+                }
 			}
-			catch (Exception exception)
+			catch (Exception ex)
 			{
 				try
 				{
 					item.Success = false;
-					item.ErrorMessage = exception.ToAllMessages();
+					item.ErrorMessage = ex.ToAllMessages();
 
-					var webExc = exception.InnerException as WebException;
-					if (webExc != null)
-						item.ExceptionStatus = webExc.Status;
+					var webExc = ex.InnerException as WebException;
+                    if (webExc != null)
+                    {
+                        item.ExceptionStatus = webExc.Status;
+                    }
 
-					if (context.Logger != null)
-						context.Logger.Error(exception, item.ToString());
+                    if (context.Logger != null)
+                    {
+                        context.Logger.Error(ex, item.ToString());
+                    }
 				}
 				catch { }
 			}
@@ -198,9 +230,9 @@ namespace SmartStore.Utilities
 		{
 			Guard.NotNull(data, nameof(data));
 
-			this.Data = data;
-			this.FileName = fileName;
-			this.ContentType = contentType;
+			Data = data;
+			FileName = fileName;
+			ContentType = contentType;
 		}
 		
 		/// <summary>
@@ -307,7 +339,7 @@ namespace SmartStore.Utilities
 
 		public override string ToString()
 		{
-			string str = "Result: {0} {1}{2}, {3}".FormatInvariant(
+			var str = "Result: {0} {1}{2}, {3}".FormatInvariant(
 				Success,
 				ExceptionStatus.ToString(),
 				ErrorMessage.HasValue() ? " ({0})".FormatInvariant(ErrorMessage) : "",

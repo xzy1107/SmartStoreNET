@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Web;
 using System.Web.Mvc;
@@ -10,6 +11,7 @@ using SmartStore.Core.Configuration;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Payments;
 using SmartStore.Core.Logging;
+using SmartStore.PayPal.Models;
 using SmartStore.PayPal.Settings;
 using SmartStore.Services.Orders;
 using SmartStore.Services.Payments;
@@ -17,15 +19,28 @@ using SmartStore.Web.Framework.Controllers;
 
 namespace SmartStore.PayPal.Controllers
 {
-	public abstract class PayPalControllerBase<TSetting> : PaymentControllerBase where TSetting : PayPalSettingsBase, ISettings, new()
+    public abstract class PayPalPaymentControllerBase : PaymentControllerBase
+	{
+        protected abstract string ProviderSystemName { get; }
+
+        protected void PrepareConfigurationModel(ApiConfigurationModel model, int storeScope)
+		{
+			var store = storeScope == 0
+				? Services.StoreContext.CurrentStore
+				: Services.StoreService.GetStoreById(storeScope);
+
+			model.PrimaryStoreCurrencyCode = store.PrimaryStoreCurrency.CurrencyCode;
+        }
+    }
+
+
+	public abstract class PayPalControllerBase<TSetting> : PayPalPaymentControllerBase where TSetting : PayPalSettingsBase, ISettings, new()
 	{
 		public PayPalControllerBase(
-			string systemName,
 			IPaymentService paymentService,
 			IOrderService orderService,
 			IOrderProcessingService orderProcessingService)
 		{
-			SystemName = systemName;
 			PaymentService = paymentService;
 			OrderService = orderService;
 			OrderProcessingService = orderProcessingService;
@@ -87,10 +102,9 @@ namespace SmartStore.PayPal.Controllers
 
 		protected bool VerifyIPN(PayPalSettingsBase settings, string formString, out Dictionary<string, string> values)
 		{
-			// settings: multistore context not possible here. we need the custom value to determine what store it is.
-
-			var request = settings.GetPayPalWebRequest();
-			request.Method = "POST";
+            // Settings: multistore context not possible here. we need the custom value to determine what store it is.
+            var request = (HttpWebRequest)WebRequest.Create(settings.GetPayPalUrl());
+            request.Method = "POST";
 			request.ContentType = "application/x-www-form-urlencoded";
 			request.UserAgent = Request.UserAgent;
 
@@ -127,15 +141,18 @@ namespace SmartStore.PayPal.Controllers
 		[ValidateInput(false)]
 		public ActionResult IPNHandler()
 		{
-			if (!PaymentService.IsPaymentMethodActive(SystemName, Services.StoreContext.CurrentStore.Id))
-				throw new SmartException(T("Plugins.Payments.PayPal.NoModuleLoading"));
-
-			var settings = Services.Settings.LoadSetting<TSetting>();
 			byte[] param = Request.BinaryRead(Request.ContentLength);
-			//var strRequest = Encoding.ASCII.GetString(param);
 			var strRequest = Encoding.UTF8.GetString(param);
-			Dictionary<string, string> values;
+
+			if (!PaymentService.IsPaymentMethodActive(ProviderSystemName, Services.StoreContext.CurrentStore.Id))
+			{
+				Logger.Warn(new SmartException(strRequest), T("Plugins.Payments.PayPal.NoModuleLoading", "IPNHandler"));
+				return Content(string.Empty);
+			}
+
 			var sb = new StringBuilder();
+			Dictionary<string, string> values;
+			var settings = Services.Settings.LoadSetting<TSetting>();
 
 			if (VerifyIPN(settings, strRequest, out values))
 			{
@@ -249,7 +266,10 @@ namespace SmartStore.PayPal.Controllers
 						{
 							var orderNumber = "";
 							var orderNumberGuid = Guid.Empty;
-							values.TryGetValue("custom", out orderNumber);
+                            if (!values.TryGetValue("custom", out orderNumber) || orderNumber.IsEmpty())
+                            {
+                                return Content(string.Empty);
+                            }
 
 							try
 							{
@@ -309,10 +329,7 @@ namespace SmartStore.PayPal.Controllers
 							}
 							else
 							{
-								if (orderNumber.IsEmpty())
-									Logger.Warn(new SmartException(sb.ToString()), T("Plugins.Payments.PayPal.IpnIrregular", "custom"));
-								else
-									Logger.Error(new SmartException(sb.ToString()), T("Plugins.Payments.PayPal.IpnOrderNotFound"));
+    							Logger.Error(new SmartException(sb.ToString()), T("Plugins.Payments.PayPal.IpnOrderNotFound"));
 							}
 						}
 						#endregion

@@ -11,24 +11,64 @@ using System.Web.Security;
 using SmartStore.Core.Infrastructure;
 using SmartStore.Core;
 using System.Web.Mvc;
+using SmartStore.Core.Fakes;
 
 namespace SmartStore
-{  
-    public static class HttpExtensions
-    {
-        private const string HTTP_CLUSTER_VAR = "HTTP_CLUSTER_HTTPS";
-        
-        /// <summary>
-        /// Gets a value which indicates whether the HTTP connection uses secure sockets (HTTPS protocol). 
-        /// Works with Cloud's load balancers.
-        /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
-        public static bool IsSecureConnection(this HttpRequestBase request)
-        {
-            return (request.IsSecureConnection || (request.ServerVariables[HTTP_CLUSTER_VAR] != null || request.ServerVariables[HTTP_CLUSTER_VAR] == "on"));
-        }
+{
+	public static class HttpExtensions
+	{
+		private const string CACHE_REGION_NAME = "SmartStoreNET:";
 
+		private static readonly List<Tuple<string, string>> _sslHeaders = new List<Tuple<string, string>>
+		{
+			new Tuple<string, string>("HTTP_CLUSTER_HTTPS", "on"),
+			new Tuple<string, string>("X-Forwarded-Proto", "https"),
+			new Tuple<string, string>("x-arr-ssl", null),
+			new Tuple<string, string>("X-Forwarded-Protocol", "https"),
+			new Tuple<string, string>("X-Forwarded-Ssl", "on"),
+			new Tuple<string, string>("X-Url-Scheme", "https")
+		};
+
+		/// <summary>
+		/// Tries to get the <see cref="HttpRequestBase"/> instance without throwing exceptions
+		/// </summary>
+		/// <returns>The <see cref="HttpRequestBase"/> instance or <c>null</c>.</returns>
+		public static HttpRequestBase SafeGetHttpRequest(this HttpContext httpContext)
+		{
+			if (httpContext == null)
+			{
+				return null;
+			}
+
+			return SafeGetHttpRequest(new HttpContextWrapper(httpContext));
+		}
+
+		/// <summary>
+		/// Tries to get the <see cref="HttpRequestBase"/> instance without throwing exceptions
+		/// </summary>
+		/// <returns>The <see cref="HttpRequestBase"/> instance or <c>null</c>.</returns>
+		public static HttpRequestBase SafeGetHttpRequest(this HttpContextBase httpContext)
+		{
+			if (httpContext == null)
+			{
+				return null;
+			}
+
+			if (httpContext.Handler != null || httpContext is FakeHttpContext)
+			{
+				// Having a handler means we're most likely in the MVC routing pipeline.
+				return httpContext.Request;
+			}
+
+			try
+			{
+				return httpContext.Request;
+			}
+			catch
+			{
+				return null;
+			}
+		}
 
 		/// <summary>
 		/// Returns wether the specified url is local to the host or not
@@ -38,7 +78,6 @@ namespace SmartStore
 		/// <returns></returns>
 		public static bool IsAppLocalUrl(this HttpRequestBase request, string url)
 		{
-
 			if (string.IsNullOrWhiteSpace(url))
 			{
 				return false;
@@ -100,20 +139,57 @@ namespace SmartStore
 		/// <returns></returns>
 		public static bool IsSecureConnection(this HttpRequest request)
         {
-            return (request.IsSecureConnection || (request.ServerVariables[HTTP_CLUSTER_VAR] != null || request.ServerVariables[HTTP_CLUSTER_VAR] == "on"));
+            return IsSecureConnection(new HttpRequestWrapper(request));
         }
 
-	    [SuppressMessage("ReSharper", "PossibleNullReferenceException")]
+		/// <summary>
+		/// Gets a value which indicates whether the HTTP connection uses secure sockets (HTTPS protocol). 
+		/// Works with Cloud's load balancers.
+		/// </summary>
+		/// <param name="request"></param>
+		/// <returns></returns>
+		public static bool IsSecureConnection(this HttpRequestBase request)
+		{
+			if (request.IsSecureConnection)
+			{
+				return true;
+			}
+
+			foreach (var tuple in _sslHeaders)
+			{
+				var serverVar = request.ServerVariables[tuple.Item1];
+				if (serverVar != null)
+				{
+					return tuple.Item2 == null || tuple.Item2.Equals(serverVar, StringComparison.OrdinalIgnoreCase);
+				}
+			}
+
+			return false;
+		}
+
+		[SuppressMessage("ReSharper", "PossibleNullReferenceException")]
 	    public static void SetFormsAuthenticationCookie(this HttpWebRequest webRequest, HttpRequestBase httpRequest)
 		{
-			Guard.NotNull(webRequest, nameof(webRequest));
-			Guard.NotNull(httpRequest, nameof(httpRequest));
+			CopyCookie(webRequest, httpRequest, FormsAuthentication.FormsCookieName);
+		}
 
-			var authCookie = httpRequest.Cookies[FormsAuthentication.FormsCookieName];
-			if (authCookie == null)
+		[SuppressMessage("ReSharper", "PossibleNullReferenceException")]
+		public static void SetAnonymousIdentCookie(this HttpWebRequest webRequest, HttpRequestBase httpRequest)
+		{
+			CopyCookie(webRequest, httpRequest, "SMARTSTORE.ANONYMOUS"); 
+		}
+
+		private static void CopyCookie(HttpWebRequest webRequest, HttpRequestBase sourceHttpRequest, string cookieName)
+		{
+			Guard.NotNull(webRequest, nameof(webRequest));
+			Guard.NotNull(sourceHttpRequest, nameof(sourceHttpRequest));
+			Guard.NotEmpty(cookieName, nameof(cookieName));
+
+			var sourceCookie = sourceHttpRequest.Cookies[cookieName];
+			if (sourceCookie == null)
 				return;
 
-			var sendCookie = new Cookie(authCookie.Name, authCookie.Value, authCookie.Path, httpRequest.Url.Host);
+			var sendCookie = new Cookie(sourceCookie.Name, sourceCookie.Value, sourceCookie.Path, sourceHttpRequest.Url.Host);
 
 			if (webRequest.CookieContainer == null)
 			{
@@ -125,7 +201,7 @@ namespace SmartStore
 
 		public static string BuildScopedKey(this Cache cache, string key)
 		{
-			return key.HasValue() ? "SmartStoreNET:" + key : null;
+			return key.HasValue() ? CACHE_REGION_NAME + key : null;
 		}
 
 		public static T GetOrAdd<T>(this Cache cache, string key, Func<T> acquirer, TimeSpan? duration = null)
@@ -155,11 +231,6 @@ namespace SmartStore
 
 		public static T GetItem<T>(this HttpContext httpContext, string key, Func<T> factory = null, bool forceCreation = true)
 		{
-			if (httpContext?.Items == null)
-			{
-				return default(T);
-			}
-
 			return GetItem<T>(new HttpContextWrapper(httpContext), key, factory, forceCreation);
 		}
 
@@ -193,14 +264,7 @@ namespace SmartStore
 
 		public static void RemoveByPattern(this Cache cache, string pattern)
 		{
-			var regionName = "SmartStoreNET:";
-
-			pattern = pattern == "*" ? "" : pattern;
-
-			var keys = from entry in HttpRuntime.Cache.AsParallel().Cast<DictionaryEntry>()
-					   let key = entry.Key.ToString()
-					   where key.StartsWith(regionName + pattern, StringComparison.OrdinalIgnoreCase)
-					   select key;
+			var keys = cache.AllKeys(pattern);
 
 			foreach (var key in keys.ToArray())
 			{
@@ -208,7 +272,19 @@ namespace SmartStore
 			}
 		}
 
-        public static ControllerContext GetMasterControllerContext(this ControllerContext controllerContext)
+		public static string[] AllKeys(this Cache cache, string pattern)
+		{
+			pattern = pattern == "*" ? CACHE_REGION_NAME : pattern;
+
+			var keys = from entry in HttpRuntime.Cache.AsParallel().Cast<DictionaryEntry>()
+					   let key = entry.Key.ToString()
+					   where key.StartsWith(pattern, StringComparison.OrdinalIgnoreCase)
+					   select key;
+
+			return keys.ToArray();
+		}
+
+		public static ControllerContext GetRootControllerContext(this ControllerContext controllerContext)
         {
             Guard.NotNull(controllerContext, nameof(controllerContext));
 
@@ -221,6 +297,21 @@ namespace SmartStore
 
             return ctx;
         }
-	}
 
+        public static bool IsBareBonePage(this ControllerContext controllerContext)
+        {
+            var ctx = controllerContext.GetRootControllerContext();
+
+            if (ctx is ViewContext viewContext)
+            {
+                // IsPopUp or Framed
+                if (viewContext.ViewBag.IsPopup == true || viewContext.ViewBag.Framed == true)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
 }

@@ -37,13 +37,17 @@ namespace SmartStore.Core.Domain.Catalog
 			AskQuestionEnabled = true;
 			RecentlyViewedProductsNumber = 8;
 			RecentlyViewedProductsEnabled = true;
-			RecentlyAddedProductsNumber = 12;
+			RecentlyAddedProductsNumber = 100;
 			RecentlyAddedProductsEnabled = true;
 			CompareProductsEnabled = true;
 			SubCategoryDisplayType = SubCategoryDisplayType.AboveProductList;
 			NumberOfBestsellersOnHomepage = 12;
+            ShowPopularProductTagsOnHomepage = false;
             ShowManufacturersOnHomepage = true;
-            ShowManufacturerPictures = false;
+            ShowManufacturerPictures = true;
+            ManufacturerItemsToDisplayOnHomepage = 18;
+            ShowManufacturersInOffCanvas = true;
+            ManufacturerItemsToDisplayInOffcanvasMenu = 20;
             ShowManufacturerInProductDetail = true;
             ShowManufacturerPicturesInProductDetail = true;
 			ProductsAlsoPurchasedEnabled = true;
@@ -56,7 +60,6 @@ namespace SmartStore.Core.Domain.Catalog
 			AllowCustomersToSelectPageSize = true;
 			MaximumBackInStockSubscriptions = 200;
 			FileUploadMaximumSizeBytes = 1024 * 200; //200KB
-			ManufacturersBlockItemsToDisplay = 8;
 			DisplayAllImagesNumber = 6;
 			ShowShortDescriptionInGridStyleLists = true;
 			ShowManufacturerInGridStyleLists = true;
@@ -65,7 +68,7 @@ namespace SmartStore.Core.Domain.Catalog
 			ShowColorSquaresInLists = true;
 			ShowDiscountSign = true;
 			ShowVariantCombinationPriceAdjustment = true;
-			ShowLinkedAttributeValueImage = true;
+            ShowLinkedAttributeValueImage = true;
 			EnableDynamicPriceUpdate = true;
             ShowProductReviewsInProductDetail = true;
             EnableHtmlTextCollapser = true;
@@ -74,7 +77,12 @@ namespace SmartStore.Core.Domain.Catalog
 			MostRecentlyUsedManufacturersMaxSize = 4;
 			IncludeShortDescriptionInCompareProducts = true;
 			GridStyleListColumnSpan = GridColumnSpan.Max4Cols;
-		}
+			ShowProductsFromSubcategories = true;
+            ApplyTierPricePercentageToAttributePriceAdjustments = false;
+            AllowDifferingEmailAddressForEmailAFriend = false;
+			AllowAnonymousUsersToEmailAFriend = false;
+			AllowAnonymousUsersToReviewProduct = false;
+        }
 
         /// <summary>
         /// Gets or sets a value indicating whether to display product SKU
@@ -121,15 +129,25 @@ namespace SmartStore.Core.Domain.Catalog
         /// </summary>
         public bool ShowVariantCombinationPriceAdjustment { get; set; }
 
-		/// <summary>
-		/// Gets or sets a value indicating whether to display quantity of linked product at attribute values
-		/// </summary>
-		public bool ShowLinkedAttributeValueQuantity { get; set; }
+        /// <summary>
+        /// Indicates whether to show a login note if the user is not authorized to see prices.
+        /// </summary>
+        public bool ShowLoginForPriceNote { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether to display quantity of linked product at attribute values
+        /// </summary>
+        public bool ShowLinkedAttributeValueQuantity { get; set; }
 
 		/// <summary>
 		/// Gets or sets a value indicating whether to display the image of linked product at attribute values
 		/// </summary>
 		public bool ShowLinkedAttributeValueImage { get; set; }
+
+        /// <summary>
+		/// Gets or sets a value indicating how many menu items will be displayed
+		/// </summary>
+        public int? MaxItemsToDisplayInCatalogMenu { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether product sorting is enabled
@@ -175,11 +193,21 @@ namespace SmartStore.Core.Domain.Catalog
 		/// Gets or sets a value indicating whether and where to display a list of subcategories
 		/// </summary>
 		public SubCategoryDisplayType SubCategoryDisplayType { get; set; }
-        
-        /// <summary>
-        /// Gets or sets a value indicating whether a 'Share button' is enabled
-        /// </summary>
-        public bool ShowShareButton { get; set; }
+
+		/// <summary>
+		/// An option indicating whether sub pages should display the subcategories
+		/// </summary>
+		public bool ShowSubCategoriesInSubPages { get; set; }
+
+		/// <summary>
+		/// An option indicating whether sub pages should display the category/manufacturer description
+		/// </summary>
+		public bool ShowDescriptionInSubPages { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether a 'Share button' is enabled
+		/// </summary>
+		public bool ShowShareButton { get; set; }
 
         /// <summary>
         /// Gets or sets a share code (e.g. AddThis button code)
@@ -225,6 +253,11 @@ namespace SmartStore.Core.Domain.Catalog
         /// Gets or sets a value indicating whether 'ask product question' feature is enabled
         /// </summary>
         public bool AskQuestionEnabled { get; set; }
+        
+        /// <summary>
+        /// Gets or sets a value indicating whether customers are allowed to enter a differing email address 
+        /// </summary>
+        public bool AllowDifferingEmailAddressForEmailAFriend { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether to allow anonymous users to email a friend.
@@ -271,6 +304,21 @@ namespace SmartStore.Core.Domain.Catalog
         /// </summary>
         public bool ShowManufacturersOnHomepage { get; set; }
 
+        /// <summary>
+        /// Gets or sets a value indicating whether to show manufacturers in offcanvas menu
+        /// </summary>
+        public bool ShowManufacturersInOffCanvas { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the value indicating how many manufacturers on home page
+        /// </summary>
+        public int ManufacturerItemsToDisplayOnHomepage { get; set; }
+
+        /// <summary>
+        /// Gets or sets the value indicating how many manufacturers in offcanvas menu
+        /// </summary>
+        public int ManufacturerItemsToDisplayInOffcanvasMenu { get; set; }
+        
         /// <summary>
         /// Gets or sets a value indicating whether to show manufacturer pictures or names on home page
         /// </summary>
@@ -364,17 +412,29 @@ namespace SmartStore.Core.Domain.Catalog
 
         public bool ShowDefaultDeliveryTime { get; set; }
 
+        public bool ShowPopularProductTagsOnHomepage { get; set; }
+
         public bool ShowDiscountSign { get; set; }
 
-		/// <summary>
-		/// Gets or sets the available customer selectable default page size options
-		/// </summary>
-		public string DefaultPageSizeOptions { get; set; }
+        /// <summary>
+        /// Gets or sets the price display style for prices
+        /// </summary>
+        public PriceDisplayStyle PriceDisplayStyle { get; set; }
 
-		/// <summary>
-		/// Gets or sets the price display type for prices in product lists
-		/// </summary>
-		public PriceDisplayType PriceDisplayType { get; set; }
+        /// <summary>
+        /// Displays a textual resources instead of the decimal value when prices are 0
+        /// </summary>
+        public bool DisplayTextForZeroPrices { get; set; }
+
+        /// <summary>
+        /// Gets or sets the available customer selectable default page size options
+        /// </summary>
+        public string DefaultPageSizeOptions { get; set; }
+
+        /// <summary>
+        /// Gets or sets the price display type for prices in product lists
+        /// </summary>
+        public PriceDisplayType PriceDisplayType { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether to include "Short description" in compare products
@@ -395,11 +455,16 @@ namespace SmartStore.Core.Domain.Catalog
         /// An option indicating whether products on category and manufacturer pages should include featured products as well
         /// </summary>
         public bool IncludeFeaturedProductsInNormalLists { get; set; }
-        
-        /// <summary>
-        /// Gets or sets a value indicating whether tier prices should be displayed with applied discounts (if available)
-        /// </summary>
-        public bool DisplayTierPricesWithDiscounts { get; set; }
+
+		/// <summary>
+		/// An option indicating whether products on category and manufacturer pages should include featured products in sub pages as well
+		/// </summary>
+		public bool IncludeFeaturedProductsInSubPages { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether tier prices should be displayed with applied discounts (if available)
+		/// </summary>
+		public bool DisplayTierPricesWithDiscounts { get; set; }
         
         /// <summary>
         /// Gets or sets a value indicating whether to ignore discounts (side-wide)
@@ -425,12 +490,7 @@ namespace SmartStore.Core.Domain.Catalog
         /// Gets or sets a list of allowed file extensions for customer uploaded files
         /// </summary>
         public List<string> FileUploadAllowedExtensions { get; set; }
-
-        /// <summary>
-        /// Gets or sets the value indicating how many manufacturers to display in manufacturers block
-        /// </summary>
-        public int ManufacturersBlockItemsToDisplay { get; set; }
-
+        
 		/// <summary>
 		/// Gets or sets a value indicating if html long text should be collapsed
 		/// </summary>
@@ -460,5 +520,10 @@ namespace SmartStore.Core.Domain.Catalog
 		/// Gets or sets how many columns per row should be displayed at most in grid style lists on largest screen resolution.
 		/// </summary>
 		public GridColumnSpan GridStyleListColumnSpan { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether percental values of tierprices should be applied to price adjustments of attributes
+        /// </summary>
+        public bool ApplyTierPricePercentageToAttributePriceAdjustments { get; set; }
     }
 }

@@ -17,20 +17,18 @@ using SmartStore.Services.Orders;
 
 namespace SmartStore.Services.Catalog
 {
-	public partial class ProductService : IProductService
+    public partial class ProductService : IProductService
 	{
 		private readonly IRepository<Product> _productRepository;
         private readonly IRepository<RelatedProduct> _relatedProductRepository;
         private readonly IRepository<CrossSellProduct> _crossSellProductRepository;
         private readonly IRepository<TierPrice> _tierPriceRepository;
         private readonly IRepository<ProductPicture> _productPictureRepository;
-        private readonly IRepository<ProductSpecificationAttribute> _productSpecificationAttributeRepository;
         private readonly IRepository<ProductVariantAttributeCombination> _productVariantAttributeCombinationRepository;
 		private readonly IRepository<ProductBundleItem> _productBundleItemRepository;
 		private readonly IRepository<ShoppingCartItem> _shoppingCartItemRepository;
 		private readonly IProductAttributeService _productAttributeService;
         private readonly IProductAttributeParser _productAttributeParser;
-        private readonly IWorkflowMessageService _workflowMessageService;
         private readonly IDbContext _dbContext;
         private readonly LocalizationSettings _localizationSettings;
 		private readonly ICommonServices _services;
@@ -41,13 +39,11 @@ namespace SmartStore.Services.Catalog
             IRepository<CrossSellProduct> crossSellProductRepository,
             IRepository<TierPrice> tierPriceRepository,
             IRepository<ProductPicture> productPictureRepository,
-            IRepository<ProductSpecificationAttribute> productSpecificationAttributeRepository,
             IRepository<ProductVariantAttributeCombination> productVariantAttributeCombinationRepository,
 			IRepository<ProductBundleItem> productBundleItemRepository,
 			IRepository<ShoppingCartItem> shoppingCartItemRepository,
 			IProductAttributeService productAttributeService,
             IProductAttributeParser productAttributeParser,
-            IWorkflowMessageService workflowMessageService,
 			IDbContext dbContext,
             LocalizationSettings localizationSettings,
 			ICommonServices services)
@@ -57,13 +53,11 @@ namespace SmartStore.Services.Catalog
             _crossSellProductRepository = crossSellProductRepository;
             _tierPriceRepository = tierPriceRepository;
             _productPictureRepository = productPictureRepository;
-            _productSpecificationAttributeRepository = productSpecificationAttributeRepository;
             _productVariantAttributeCombinationRepository = productVariantAttributeCombinationRepository;
 			_productBundleItemRepository = productBundleItemRepository;
 			_shoppingCartItemRepository = shoppingCartItemRepository;
             _productAttributeService = productAttributeService;
             _productAttributeParser = productAttributeParser;
-            _workflowMessageService = workflowMessageService;
             _dbContext = dbContext;
             _localizationSettings = localizationSettings;
 			_services = services;
@@ -80,7 +74,7 @@ namespace SmartStore.Services.Catalog
 				var mutualAssociations = (
 					from rp in _relatedProductRepository.Table
 					join p in _productRepository.Table on rp.ProductId2 equals p.Id
-					where !p.Deleted && rp.ProductId2 == id1
+					where rp.ProductId2 == id1 && !p.Deleted
 					select rp).ToList();
 
 				foreach (int id2 in productIds)
@@ -121,7 +115,7 @@ namespace SmartStore.Services.Catalog
 				var mutualAssociations = (
 					from rp in _crossSellProductRepository.Table
 					join p in _productRepository.Table on rp.ProductId2 equals p.Id
-					where !p.Deleted && rp.ProductId2 == id1
+					where rp.ProductId2 == id1 && !p.Deleted
 					select rp).ToList();
 
 				foreach (int id2 in productIds)
@@ -152,10 +146,9 @@ namespace SmartStore.Services.Catalog
 
 		public virtual void DeleteProduct(Product product)
         {
-            if (product == null)
-                throw new ArgumentNullException("product");
+			Guard.NotNull(product, nameof(product));
 
-            product.Deleted = true;
+			product.Deleted = true;
 			product.DeliveryTimeId = null;
 			product.QuantityUnitId = null;
 			product.CountryOfOriginId = null;
@@ -196,8 +189,10 @@ namespace SmartStore.Services.Catalog
 
         public virtual IList<Product> GetProductsByIds(int[] productIds, ProductLoadFlags flags = ProductLoadFlags.None)
         {
-            if (productIds == null || productIds.Length == 0)
+            if (productIds == null || !productIds.Any())
+            {
                 return new List<Product>();
+            }
 
             var query = from p in _productRepository.Table
                         where productIds.Contains(p.Id)
@@ -210,13 +205,20 @@ namespace SmartStore.Services.Catalog
 
 			var products = query.ToList();
 
-			// sort by passed identifier sequence
-			var sortQuery = from i in productIds
-							join p in products on i equals p.Id
-							select p;
+			// Sort by passed identifier sequence.
+			return products.OrderBySequence(productIds).ToList();
+		}
 
-			return sortQuery.ToList();
-        }
+		public virtual Product GetProductBySystemName(string systemName)
+		{
+			if (systemName.IsEmpty())
+			{
+				return null;
+			}
+
+			var product = _productRepository.Table.FirstOrDefault(x => x.SystemName == systemName && x.IsSystemProduct);
+			return product;
+		}
 
 		private IQueryable<Product> ApplyLoadFlags(IQueryable<Product> query, ProductLoadFlags flags)
 		{
@@ -290,43 +292,23 @@ namespace SmartStore.Services.Catalog
 
         public virtual void InsertProduct(Product product)
         {
-            if (product == null)
-                throw new ArgumentNullException("product");
+			Guard.NotNull(product, nameof(product));
 
-            //insert
-            _productRepository.Insert(product);
-            
-            //event notification
-            _services.EventPublisher.EntityInserted(product);
+			_productRepository.Insert(product);
         }
 
-		public virtual void UpdateProduct(Product product, bool publishEvent = true)
+		public virtual void UpdateProduct(Product product)
         {
-            if (product == null)
-                throw new ArgumentNullException("product");
+			Guard.NotNull(product, nameof(product));
 
-			bool modified = false;
-			if (publishEvent)
-			{
-				modified = _productRepository.IsModified(product);
-			}
-
-            // update
             _productRepository.Update(product);
-
-            // event notification
-			if (publishEvent && modified)
-			{
-				_services.EventPublisher.EntityUpdated(product);
-			}
         }
 
         public virtual void UpdateProductReviewTotals(Product product)
         {
-            if (product == null)
-                throw new ArgumentNullException("product");
+			Guard.NotNull(product, nameof(product));
 
-            int approvedRatingSum = 0;
+			int approvedRatingSum = 0;
             int notApprovedRatingSum = 0; 
             int approvedTotalReviews = 0;
             int notApprovedTotalReviews = 0;
@@ -357,7 +339,7 @@ namespace SmartStore.Services.Catalog
 			// Track inventory for product
 			var query1 = from p in _productRepository.Table
 						 orderby p.MinStockQuantity
-						 where !p.Deleted &&
+						 where !p.Deleted && 
 							p.ManageInventoryMethodId == (int)ManageInventoryMethod.ManageStock &&
 							p.MinStockQuantity >= p.StockQuantity
 						 select p;
@@ -366,7 +348,7 @@ namespace SmartStore.Services.Catalog
 			// Track inventory for product by product attributes
 			var query2 = from p in _productRepository.Table
 						 from pvac in p.ProductVariantAttributeCombinations
-						 where !p.Deleted &&
+						 where !p.Deleted && 
 							p.ManageInventoryMethodId == (int)ManageInventoryMethod.ManageStockByAttributes &&
 							pvac.StockQuantity <= 0
 						 select p;
@@ -409,8 +391,7 @@ namespace SmartStore.Services.Catalog
 
             var query = from p in _productRepository.Table
                         orderby p.Id
-                        where !p.Deleted &&
-                        p.Gtin == gtin
+                        where !p.Deleted && p.Gtin == gtin
                         select p;
             var product = query.FirstOrDefault();
             return product;
@@ -470,8 +451,7 @@ namespace SmartStore.Services.Catalog
 
 		public virtual AdjustInventoryResult AdjustInventory(OrderItem orderItem, bool decrease, int quantity)
 		{
-			if (orderItem == null)
-				throw new ArgumentNullException("orderItem");
+			Guard.NotNull(orderItem, nameof(orderItem));
 
 			if (orderItem.Product.ProductType == ProductType.BundledProduct && orderItem.Product.BundlePerItemShoppingCart)
 			{
@@ -500,8 +480,7 @@ namespace SmartStore.Services.Catalog
 
 		public virtual AdjustInventoryResult AdjustInventory(Product product, bool decrease, int quantity, string attributesXml)
         {
-			if (product == null)
-				throw new ArgumentNullException("product");
+			Guard.NotNull(product, nameof(product));
 
 			var result = new AdjustInventoryResult();
 
@@ -542,10 +521,10 @@ namespace SmartStore.Services.Catalog
 						product.Published = newPublished;
 
 						UpdateProduct(product);
-
+						
                         //send email notification
 						if (decrease && product.NotifyAdminForQuantityBelow > result.StockQuantityNew)
-                            _workflowMessageService.SendQuantityBelowStoreOwnerNotification(product, _localizationSettings.DefaultAdminLanguageId);                        
+                            _services.MessageFactory.SendQuantityBelowStoreOwnerNotification(product, _localizationSettings.DefaultAdminLanguageId);                        
                     }
                     break;
                 case ManageInventoryMethod.ManageStockByAttributes:
@@ -585,8 +564,7 @@ namespace SmartStore.Services.Catalog
         
 		public virtual void UpdateHasTierPricesProperty(Product product)
         {
-			if (product == null)
-				throw new ArgumentNullException("product");
+			Guard.NotNull(product, nameof(product));
 
 			var prevValue = product.HasTierPrices;
 			product.HasTierPrices = product.TierPrices.Count > 0;
@@ -596,8 +574,7 @@ namespace SmartStore.Services.Catalog
 
 		public virtual void UpdateLowestAttributeCombinationPriceProperty(Product product)
 		{
-			if (product == null)
-				throw new ArgumentNullException("product");
+			Guard.NotNull(product, nameof(product));
 
 			var prevValue = product.LowestAttributeCombinationPrice;
 
@@ -609,8 +586,7 @@ namespace SmartStore.Services.Catalog
 
 		public virtual void UpdateHasDiscountsApplied(Product product)
         {
-			if (product == null)
-				throw new ArgumentNullException("product");
+			Guard.NotNull(product, nameof(product));
 
 			var prevValue = product.HasDiscountsApplied;
 			product.HasDiscountsApplied = product.AppliedDiscounts.Count > 0;
@@ -622,7 +598,13 @@ namespace SmartStore.Services.Catalog
 		{
 			Guard.NotNull(productIds, nameof(productIds));
 
-			var query = _productRepository.TableUntracked
+            var map = new Multimap<int, ProductTag>();
+            if (!productIds.Any())
+            {
+                return map;
+            }
+
+            var query = _productRepository.TableUntracked
 				.Expand(x => x.ProductTags)
 				.Where(x => productIds.Contains(x.Id))
 				.Select(x => new
@@ -631,9 +613,9 @@ namespace SmartStore.Services.Catalog
 					Tags = x.ProductTags
 				});
 
-			var map = new Multimap<int, ProductTag>();
+			var list = query.ToList();
 
-			foreach (var item in query.ToList())
+			foreach (var item in list)
 			{
 				foreach (var tag in item.Tags)
 					map.Add(item.ProductId, tag);
@@ -642,11 +624,40 @@ namespace SmartStore.Services.Catalog
 			return map;
 		}
 
-		public virtual Multimap<int, Discount> GetAppliedDiscountsByProductIds(int[] productIds)
+        public virtual Multimap<int, Product> GetAssociatedProductsByProductIds(int[] productIds, bool showHidden = false)
+        {
+            Guard.NotNull(productIds, nameof(productIds));
+
+            if (!productIds.Any())
+            {
+                return new Multimap<int, Product>();
+            }
+
+            // Ignore multistore. Expect multistore setting for associated products is the same as for parent grouped product.
+            var query = _productRepository.TableUntracked
+                .Where(x => productIds.Contains(x.ParentGroupedProductId) && !x.Deleted && (showHidden || x.Published))
+                .OrderBy(x => x.ParentGroupedProductId)
+                .ThenBy(x => x.DisplayOrder);
+
+            var associatedProducts = query.ToList();
+
+            var map = associatedProducts
+                .ToMultimap(x => x.ParentGroupedProductId, x => x);
+
+            return map;
+        }
+
+        public virtual Multimap<int, Discount> GetAppliedDiscountsByProductIds(int[] productIds)
 		{
 			Guard.NotNull(productIds, nameof(productIds));
 
-			var query = _productRepository.TableUntracked
+            var map = new Multimap<int, Discount>();
+            if (!productIds.Any())
+            {
+                return map;
+            }
+
+            var query = _productRepository.Table // .TableUntracked does not seem to eager load
 				.Expand(x => x.AppliedDiscounts.Select(y => y.DiscountRequirements))
 				.Where(x => productIds.Contains(x.Id))
 				.Select(x => new
@@ -655,30 +666,10 @@ namespace SmartStore.Services.Catalog
 					Discounts = x.AppliedDiscounts
 				});
 
-			var map = new Multimap<int, Discount>();
-
 			foreach (var item in query.ToList())
 			{
-				foreach (var discount in item.Discounts)
-					map.Add(item.ProductId, discount);
+				map.AddRange(item.ProductId, item.Discounts);
 			}
-
-			return map;
-		}
-
-		public virtual Multimap<int, ProductSpecificationAttribute> GetProductSpecificationAttributesByProductIds(int[] productIds)
-		{
-			Guard.NotNull(productIds, nameof(productIds));
-
-			var query = _productSpecificationAttributeRepository.TableUntracked
-				.Expand(x => x.SpecificationAttributeOption)
-				.Expand(x => x.SpecificationAttributeOption.SpecificationAttribute)
-				.Where(x => productIds.Contains(x.ProductId));
-
-			var map = query
-				.OrderBy(x => x.DisplayOrder)
-				.ToList()
-				.ToMultimap(x => x.ProductId, x => x);
 
 			return map;
 		}
@@ -689,13 +680,9 @@ namespace SmartStore.Services.Catalog
 
         public virtual void DeleteRelatedProduct(RelatedProduct relatedProduct)
         {
-            if (relatedProduct == null)
-                throw new ArgumentNullException("relatedProduct");
+			Guard.NotNull(relatedProduct, nameof(relatedProduct));
 
-            _relatedProductRepository.Delete(relatedProduct);
-
-            //event notification
-            _services.EventPublisher.EntityDeleted(relatedProduct);
+			_relatedProductRepository.Delete(relatedProduct);
         }
 
         public virtual IList<RelatedProduct> GetRelatedProductsByProductId1(int productId1, bool showHidden = false)
@@ -721,24 +708,16 @@ namespace SmartStore.Services.Catalog
 
         public virtual void InsertRelatedProduct(RelatedProduct relatedProduct)
         {
-            if (relatedProduct == null)
-                throw new ArgumentNullException("relatedProduct");
+			Guard.NotNull(relatedProduct, nameof(relatedProduct));
 
-            _relatedProductRepository.Insert(relatedProduct);
-
-            //event notification
-            _services.EventPublisher.EntityInserted(relatedProduct);
+			_relatedProductRepository.Insert(relatedProduct);
         }
 
         public virtual void UpdateRelatedProduct(RelatedProduct relatedProduct)
         {
-            if (relatedProduct == null)
-                throw new ArgumentNullException("relatedProduct");
+			Guard.NotNull(relatedProduct, nameof(relatedProduct));
 
-            _relatedProductRepository.Update(relatedProduct);
-
-            //event notification
-            _services.EventPublisher.EntityUpdated(relatedProduct);
+			_relatedProductRepository.Update(relatedProduct);
         }
 
 		public virtual int EnsureMutuallyRelatedProducts(int productId1)
@@ -759,29 +738,38 @@ namespace SmartStore.Services.Catalog
 
         public virtual void DeleteCrossSellProduct(CrossSellProduct crossSellProduct)
         {
-            if (crossSellProduct == null)
-                throw new ArgumentNullException("crossSellProduct");
+			Guard.NotNull(crossSellProduct, nameof(crossSellProduct));
 
-            _crossSellProductRepository.Delete(crossSellProduct);
-
-            //event notification
-            _services.EventPublisher.EntityDeleted(crossSellProduct);
+			_crossSellProductRepository.Delete(crossSellProduct);
         }
 
         public virtual IList<CrossSellProduct> GetCrossSellProductsByProductId1(int productId1, bool showHidden = false)
         {
             var query = from csp in _crossSellProductRepository.Table
                         join p in _productRepository.Table on csp.ProductId2 equals p.Id
-                        where csp.ProductId1 == productId1 &&
-                        !p.Deleted &&
-                        (showHidden || p.Published)
+                        where csp.ProductId1 == productId1 && !p.Deleted && (showHidden || p.Published)
                         orderby csp.Id
                         select csp;
+
             var crossSellProducts = query.ToList();
             return crossSellProducts;
         }
 
-        public virtual CrossSellProduct GetCrossSellProductById(int crossSellProductId)
+		public virtual IList<CrossSellProduct> GetCrossSellProductsByProductIds(IEnumerable<int> productIds, bool showHidden = false)
+		{
+			Guard.NotNull(productIds, nameof(productIds));
+
+			var query = from csp in _crossSellProductRepository.Table
+						join p in _productRepository.Table on csp.ProductId2 equals p.Id
+						where productIds.Contains(csp.ProductId1) && !p.Deleted && (showHidden || p.Published)
+						orderby csp.Id
+						select csp;
+
+			var crossSellProducts = query.ToList();
+			return crossSellProducts;
+		}
+
+		public virtual CrossSellProduct GetCrossSellProductById(int crossSellProductId)
         {
             if (crossSellProductId == 0)
                 return null;
@@ -792,68 +780,39 @@ namespace SmartStore.Services.Catalog
 
         public virtual void InsertCrossSellProduct(CrossSellProduct crossSellProduct)
         {
-            if (crossSellProduct == null)
-                throw new ArgumentNullException("crossSellProduct");
+			Guard.NotNull(crossSellProduct, nameof(crossSellProduct));
 
-            _crossSellProductRepository.Insert(crossSellProduct);
-
-            //event notification
-            _services.EventPublisher.EntityInserted(crossSellProduct);
+			_crossSellProductRepository.Insert(crossSellProduct);
         }
 
         public virtual void UpdateCrossSellProduct(CrossSellProduct crossSellProduct)
         {
-            if (crossSellProduct == null)
-                throw new ArgumentNullException("crossSellProduct");
+			Guard.NotNull(crossSellProduct, nameof(crossSellProduct));
 
-            _crossSellProductRepository.Update(crossSellProduct);
-
-            //event notification
-            _services.EventPublisher.EntityUpdated(crossSellProduct);
+			_crossSellProductRepository.Update(crossSellProduct);
         }
 
 		public virtual IList<Product> GetCrosssellProductsByShoppingCart(IList<OrganizedShoppingCartItem> cart, int numberOfProducts)
-        {
-            var result = new List<Product>();
+		{
+			var result = new List<Product>();
 
-            if (numberOfProducts == 0)
-                return result;
+			if (numberOfProducts == 0)
+				return result;
 
-            if (cart == null || cart.Count == 0)
-                return result;
+			if (cart == null || cart.Count == 0)
+				return result;
 
-            var cartProductIds = new List<int>();
-            foreach (var sci in cart)
-            {
-                int prodId = sci.Item.ProductId;
-                if (!cartProductIds.Contains(prodId))
-                    cartProductIds.Add(prodId);
-            }
+			var cartProductIds = new HashSet<int>(cart.Select(x => x.Item.ProductId));
+			var csItems = GetCrossSellProductsByProductIds(cartProductIds);
+			var productIdsToLoad = new HashSet<int>(csItems.Select(x => x.ProductId2).Except(cartProductIds));
 
-            foreach (var sci in cart)
-            {
-                var crossSells = GetCrossSellProductsByProductId1(sci.Item.ProductId);
-                foreach (var crossSell in crossSells)
-                {
-                    //validate that this product is not added to result yet
-                    //validate that this product is not in the cart
-                    if (result.Find(p => p.Id == crossSell.ProductId2) == null &&
-                        !cartProductIds.Contains(crossSell.ProductId2))
-                    {
-                        var productToAdd = GetProductById(crossSell.ProductId2);
-                        //validate product
-                        if (productToAdd == null || productToAdd.Deleted || !productToAdd.Published)
-                            continue;
+			if (productIdsToLoad.Count > 0)
+			{
+				result.AddRange(GetProductsByIds(productIdsToLoad.Take(numberOfProducts).ToArray()));
+			}
 
-                        //add a product to result
-                        result.Add(productToAdd);
-                        if (result.Count >= numberOfProducts)
-                            return result;
-                    }
-                }
-            }
-            return result;
-        }
+			return result;
+		}
 
 		public virtual int EnsureMutuallyCrossSellProducts(int productId1)
 		{
@@ -873,13 +832,9 @@ namespace SmartStore.Services.Catalog
         
         public virtual void DeleteTierPrice(TierPrice tierPrice)
         {
-            if (tierPrice == null)
-                throw new ArgumentNullException("tierPrice");
+			Guard.NotNull(tierPrice, nameof(tierPrice));
 
-            _tierPriceRepository.Delete(tierPrice);
-
-            //event notification
-            _services.EventPublisher.EntityDeleted(tierPrice);
+			_tierPriceRepository.Delete(tierPrice);
         }
 
         public virtual TierPrice GetTierPriceById(int tierPriceId)
@@ -894,6 +849,11 @@ namespace SmartStore.Services.Catalog
 		public virtual Multimap<int, TierPrice> GetTierPricesByProductIds(int[] productIds, Customer customer = null, int storeId = 0)
 		{
 			Guard.NotNull(productIds, nameof(productIds));
+
+            if (!productIds.Any())
+            {
+                return new Multimap<int, TierPrice>();
+            }
 
 			var query =
 				from x in _tierPriceRepository.TableUntracked
@@ -918,24 +878,16 @@ namespace SmartStore.Services.Catalog
 
         public virtual void InsertTierPrice(TierPrice tierPrice)
         {
-            if (tierPrice == null)
-                throw new ArgumentNullException("tierPrice");
+			Guard.NotNull(tierPrice, nameof(tierPrice));
 
-            _tierPriceRepository.Insert(tierPrice);
-
-            //event notification
-            _services.EventPublisher.EntityInserted(tierPrice);
+			_tierPriceRepository.Insert(tierPrice);
         }
 
         public virtual void UpdateTierPrice(TierPrice tierPrice)
         {
-            if (tierPrice == null)
-                throw new ArgumentNullException("tierPrice");
+			Guard.NotNull(tierPrice, nameof(tierPrice));
 
-            _tierPriceRepository.Update(tierPrice);
-
-            //event notification
-            _services.EventPublisher.EntityUpdated(tierPrice);
+			_tierPriceRepository.Update(tierPrice);
         }
 
         #endregion
@@ -944,15 +896,11 @@ namespace SmartStore.Services.Catalog
 
         public virtual void DeleteProductPicture(ProductPicture productPicture)
         {
-            if (productPicture == null)
-                throw new ArgumentNullException("productPicture");
+			Guard.NotNull(productPicture, nameof(productPicture));
 
-            UnassignDeletedPictureFromVariantCombinations(productPicture);
+			UnassignDeletedPictureFromVariantCombinations(productPicture);
 
             _productPictureRepository.Delete(productPicture);
-
-            //event notification
-            _services.EventPublisher.EntityDeleted(productPicture);
         }
 
         private void UnassignDeletedPictureFromVariantCombinations(ProductPicture productPicture)
@@ -997,7 +945,14 @@ namespace SmartStore.Services.Catalog
 
 		public virtual Multimap<int, ProductPicture> GetProductPicturesByProductIds(int[] productIds, bool onlyFirstPicture = false)
 		{
-			var query = 
+            Guard.NotNull(productIds, nameof(productIds));
+
+            if (!productIds.Any())
+            {
+                return new Multimap<int, ProductPicture>();
+            }
+
+            var query = 
 				from pp in _productPictureRepository.TableUntracked.Expand(x => x.Picture)
 				where productIds.Contains(pp.ProductId)
 				orderby pp.ProductId, pp.DisplayOrder
@@ -1033,13 +988,9 @@ namespace SmartStore.Services.Catalog
 
         public virtual void InsertProductPicture(ProductPicture productPicture)
         {
-            if (productPicture == null)
-                throw new ArgumentNullException("productPicture");
+			Guard.NotNull(productPicture, nameof(productPicture));
 
-            _productPictureRepository.Insert(productPicture);
-
-            //event notification
-            _services.EventPublisher.EntityInserted(productPicture);
+			_productPictureRepository.Insert(productPicture);
         }
 
         /// <summary>
@@ -1048,13 +999,9 @@ namespace SmartStore.Services.Catalog
         /// <param name="productPicture">Product picture</param>
         public virtual void UpdateProductPicture(ProductPicture productPicture)
         {
-            if (productPicture == null)
-                throw new ArgumentNullException("productPicture");
+			Guard.NotNull(productPicture, nameof(productPicture));
 
-            _productPictureRepository.Update(productPicture);
-
-            //event notification
-            _services.EventPublisher.EntityUpdated(productPicture);
+			_productPictureRepository.Update(productPicture);
         }
 
         #endregion
@@ -1063,8 +1010,7 @@ namespace SmartStore.Services.Catalog
 
 		public virtual void InsertBundleItem(ProductBundleItem bundleItem)
 		{
-			if (bundleItem == null)
-				throw new ArgumentNullException("bundleItem");
+			Guard.NotNull(bundleItem, nameof(bundleItem));
 
 			if (bundleItem.BundleProductId == 0)
 				throw new SmartException("BundleProductId of a bundle item cannot be 0.");
@@ -1076,26 +1022,18 @@ namespace SmartStore.Services.Catalog
 				throw new SmartException("A bundle item cannot be an element of itself.");
 
 			_productBundleItemRepository.Insert(bundleItem);
-
-			//event notification
-			_services.EventPublisher.EntityInserted(bundleItem);
 		}
 
 		public virtual void UpdateBundleItem(ProductBundleItem bundleItem)
 		{
-			if (bundleItem == null)
-				throw new ArgumentNullException("bundleItem");
+			Guard.NotNull(bundleItem, nameof(bundleItem));
 
 			_productBundleItemRepository.Update(bundleItem);
-
-			//event notification
-			_services.EventPublisher.EntityUpdated(bundleItem);
 		}
 
 		public virtual void DeleteBundleItem(ProductBundleItem bundleItem)
 		{
-			if (bundleItem == null)
-				throw new ArgumentNullException("bundleItem");
+			Guard.NotNull(bundleItem, nameof(bundleItem));
 
 			// remove bundles from shopping carts (otherwise bundle item cannot be deleted)
 			var parentCartItemIds = _shoppingCartItemRepository.TableUntracked
@@ -1123,9 +1061,6 @@ namespace SmartStore.Services.Catalog
 
 			// delete bundle item
 			_productBundleItemRepository.Delete(bundleItem);
-
-			// event notification
-			_services.EventPublisher.EntityDeleted(bundleItem);
 		}
 
 		public virtual ProductBundleItem GetBundleItemById(int bundleItemId)
@@ -1136,7 +1071,7 @@ namespace SmartStore.Services.Catalog
 			return _productBundleItemRepository.GetById(bundleItemId);
 		}
 
-		public virtual IList<ProductBundleItemData> GetBundleItems(int bundleProductId, bool showHidden = false)
+        public virtual IList<ProductBundleItemData> GetBundleItems(int bundleProductId, bool showHidden = false)
 		{
 			var query =
 				from pbi in _productBundleItemRepository.Table
@@ -1145,7 +1080,7 @@ namespace SmartStore.Services.Catalog
 				orderby pbi.DisplayOrder
 				select pbi;
 
-			query = query.Expand(x => x.Product);
+			query = query.Include(x => x.Product);
 
 			var bundleItemData = new List<ProductBundleItemData>();
 
@@ -1154,9 +1089,14 @@ namespace SmartStore.Services.Catalog
 			return bundleItemData;
 		}
 
-		public virtual Multimap<int, ProductBundleItem> GetBundleItemsByProductIds(int[] productIds, bool showHidden = false)
+        public virtual Multimap<int, ProductBundleItem> GetBundleItemsByProductIds(int[] productIds, bool showHidden = false)
 		{
 			Guard.NotNull(productIds, nameof(productIds));
+
+            if (!productIds.Any())
+            {
+                return new Multimap<int, ProductBundleItem>();
+            }
 
 			var query =
 				from pbi in _productBundleItemRepository.TableUntracked
@@ -1165,13 +1105,32 @@ namespace SmartStore.Services.Catalog
 				orderby pbi.DisplayOrder
 				select pbi;
 
-			var map = query.Expand(x => x.Product)
-				.ToList()
+            var map = query
+                .Include(x => x.Product)
+                .Include(x => x.BundleProduct)
+                .ToList()
 				.ToMultimap(x => x.BundleProductId, x => x);
 
 			return map;
 		}
 
-		#endregion
-	}
+        public virtual bool IsBundleItem(int productId)
+        {
+            if (productId == 0)
+            {
+                return false;
+            }
+
+            var query =
+                from pbi in _productBundleItemRepository.TableUntracked
+                join bundle in _productRepository.TableUntracked on pbi.BundleProductId equals bundle.Id
+                where pbi.ProductId == productId && !bundle.Deleted
+                select pbi;
+
+            var result = query.Any();
+            return result;
+        }
+
+        #endregion
+    }
 }

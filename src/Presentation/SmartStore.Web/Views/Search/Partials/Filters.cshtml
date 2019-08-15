@@ -26,8 +26,21 @@
 				continue;
 			}
 
+			string templateHtml = null;
+			try
+			{
+				templateHtml = Html.Action(templateRoute.Action, templateRoute.Controller, templateRoute.RouteValues).ToHtmlString();
+			}
+			catch
+			{
+			}
+			if (!templateHtml.HasValue())
+			{
+				continue;
+			}
+
 			i++;
-			var selectedFilters = group.Facets.Where(x => x.Value.IsSelected).ToArray();
+			var selectedFilters = group.SelectedFacets.ToArray();
 			var selectedCount = selectedFilters.Length;
 			var expanded = i <= 3 || selectedCount > 0;
 
@@ -43,8 +56,8 @@
 					}
 					@(group.Label ?? group.Key)
 				</a>
-				<div id="facet-body-@(group.Key)" class="facet-body collapse@(expanded ? " in" : "")" aria-expanded="@expanded">
-					@{ Html.RenderAction(templateRoute.Action, templateRoute.Controller, templateRoute.RouteValues); }
+				<div id="facet-body-@(group.Key)" class="facet-body collapse@(expanded ? " show" : "")" aria-expanded="@expanded">
+					@Html.Raw(templateHtml)
 					@if (selectedCount > 0)
 					{
 						<a href="@Url.FacetRemove(selectedFilters)" class="btn-remove-group-filters">

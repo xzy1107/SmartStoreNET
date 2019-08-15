@@ -115,8 +115,8 @@ namespace SmartStore.Core.Fakes
         {
             get
             {
-                //we know that relative paths always start with ~/
-                //ApplicationPath should start with /
+                // We know that relative paths always start with ~/
+                // ApplicationPath should start with /
                 if (_relativeUrl != null && _relativeUrl.StartsWith("~/"))
                     return _relativeUrl.Remove(0, 1);
                 return null;
@@ -136,31 +136,12 @@ namespace SmartStore.Core.Fakes
             get { return null; }
         }
 
-        public override string RawUrl
-        {
-            get { return this.ApplicationPath; }
-        }
-
-        public override bool IsSecureConnection
-        {
-            get { return false; }
-        }
-
-        public override bool IsAuthenticated
-        {
-            get
-            {
-                return false;
-            }
-        }
-
-		public override string[] UserLanguages 
-		{
-			get 
-			{
-				return new string[] { };
-			}
-		}
+		public override string RawUrl => this.ApplicationPath;
+		public override bool IsSecureConnection => _url?.Scheme?.EmptyNull().StartsWith("https", StringComparison.OrdinalIgnoreCase) == true;
+		public override bool IsAuthenticated => false;
+		public override string[] UserLanguages => new string[] { };
+		public override string UserAgent => "SmartStore.NET";
+		public override bool IsLocal => false;
 
 		public override RequestContext RequestContext
 		{

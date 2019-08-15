@@ -9,9 +9,9 @@ using System.Text;
 using System.Web;
 using System.Web.Mvc;
 using DotNetOpenAuth.AspNet;
-using DotNetOpenAuth.AspNet.Clients;
 using Newtonsoft.Json.Linq;
 using SmartStore.Core.Domain.Customers;
+using SmartStore.Core.Logging;
 using SmartStore.Services;
 using SmartStore.Services.Authentication.External;
 
@@ -27,7 +27,7 @@ namespace SmartStore.FacebookAuth.Core
         private readonly HttpContextBase _httpContext;
 		private readonly ICommonServices _services;
 
-		private FacebookClient _facebookApplication;
+		private FacebookOAuth2Client _facebookApplication;
 
 		#endregion
 
@@ -39,18 +39,22 @@ namespace SmartStore.FacebookAuth.Core
             HttpContextBase httpContext,
 			ICommonServices services)
         {
-            this._authorizer = authorizer;
-            this._openAuthenticationService = openAuthenticationService;
-            this._externalAuthenticationSettings = externalAuthenticationSettings;
-            this._httpContext = httpContext;
-			this._services = services;
-        }
+            _authorizer = authorizer;
+            _openAuthenticationService = openAuthenticationService;
+            _externalAuthenticationSettings = externalAuthenticationSettings;
+            _httpContext = httpContext;
+			_services = services;
+
+			Logger = NullLogger.Instance;
+		}
+
+		public ILogger Logger { get; set; }
 
 		#endregion
 
 		#region Utilities
 
-		private FacebookClient FacebookApplication
+		private FacebookOAuth2Client FacebookApplication
         {
 			get
 			{
@@ -58,7 +62,7 @@ namespace SmartStore.FacebookAuth.Core
 				{
 					var settings = _services.Settings.LoadSetting<FacebookExternalAuthSettings>(_services.StoreContext.CurrentStore.Id);
 
-					_facebookApplication = new FacebookClient(settings.ClientKeyIdentifier, settings.ClientSecret);
+					_facebookApplication = new FacebookOAuth2Client(settings.ClientKeyIdentifier, settings.ClientSecret);
 				}
 
 				return _facebookApplication;
@@ -67,9 +71,34 @@ namespace SmartStore.FacebookAuth.Core
 
 		private AuthorizeState VerifyAuthentication(string returnUrl)
         {
-			var authResult = this.FacebookApplication.VerifyAuthentication(_httpContext, GenerateLocalCallbackUri());
+			string error = null;
+			AuthenticationResult authResult = null;
 
-			if (authResult.IsSuccessful)
+			try
+			{
+				authResult = this.FacebookApplication.VerifyAuthentication(_httpContext, GenerateLocalCallbackUri());
+			}
+			catch (WebException wexc)
+			{
+				using (var response = wexc.Response as HttpWebResponse)
+				{
+					error = response.StatusDescription;
+
+					var enc = Encoding.GetEncoding(response.CharacterSet);
+					using (var reader = new StreamReader(response.GetResponseStream(), enc))
+					{
+						var rawResponse = reader.ReadToEnd();
+						Logger.Log(LogLevel.Error, new Exception(rawResponse), response.StatusDescription, null);
+					}
+				}
+			}
+			catch (Exception exception)
+			{
+				error = exception.ToString();
+				Logger.Log(LogLevel.Error, exception, null, null);
+			}
+
+			if (authResult != null && authResult.IsSuccessful)
 			{
 				if (!authResult.ExtraData.ContainsKey("id"))
 					throw new Exception("Authentication result does not contain id data");
@@ -77,7 +106,7 @@ namespace SmartStore.FacebookAuth.Core
 				if (!authResult.ExtraData.ContainsKey("accesstoken"))
 					throw new Exception("Authentication result does not contain accesstoken data");
 
-				var parameters = new OAuthAuthenticationParameters(Provider.SystemName)
+				var parameters = new OAuthAuthenticationParameters(FacebookExternalAuthMethod.SystemName)
 				{
 					ExternalIdentifier = authResult.ProviderUserId,
 					OAuthToken = authResult.ExtraData["accesstoken"],
@@ -92,9 +121,18 @@ namespace SmartStore.FacebookAuth.Core
 				return new AuthorizeState(returnUrl, result);
 			}
 
+			if (error.IsEmpty() && authResult != null && authResult.Error != null)
+			{
+				error = authResult.Error.Message;
+			}
+			if (error.IsEmpty())
+			{
+				error = _services.Localization.GetResource("Admin.Common.UnknownError");
+			}
+
 			var state = new AuthorizeState(returnUrl, OpenAuthenticationStatus.Error);
-			var error = authResult.Error != null ? authResult.Error.Message : "Unknown error";
 			state.AddError(error);
+
             return state;
         }
 

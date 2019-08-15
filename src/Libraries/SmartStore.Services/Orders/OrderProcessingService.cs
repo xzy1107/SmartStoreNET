@@ -9,10 +9,10 @@ using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Directory;
 using SmartStore.Core.Domain.Discounts;
 using SmartStore.Core.Domain.Localization;
-using SmartStore.Core.Domain.Logging;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Payments;
 using SmartStore.Core.Domain.Shipping;
+using SmartStore.Core.Domain.Stores;
 using SmartStore.Core.Domain.Tax;
 using SmartStore.Core.Events;
 using SmartStore.Core.Localization;
@@ -33,10 +33,7 @@ using SmartStore.Services.Tax;
 
 namespace SmartStore.Services.Orders
 {
-	/// <summary>
-	/// Order processing service
-	/// </summary>
-	public partial class OrderProcessingService : IOrderProcessingService
+    public partial class OrderProcessingService : IOrderProcessingService
     {
         #region Fields
         
@@ -46,7 +43,6 @@ namespace SmartStore.Services.Orders
         private readonly ILanguageService _languageService;
         private readonly IProductService _productService;
         private readonly IPaymentService _paymentService;
-        private readonly ILogger _logger;
         private readonly IOrderTotalCalculationService _orderTotalCalculationService;
         private readonly IPriceCalculationService _priceCalculationService;
         private readonly IPriceFormatter _priceFormatter;
@@ -63,7 +59,7 @@ namespace SmartStore.Services.Orders
         private readonly IEncryptionService _encryptionService;
         private readonly IWorkContext _workContext;
 		private readonly IStoreContext _storeContext;
-        private readonly IWorkflowMessageService _workflowMessageService;
+        private readonly IMessageFactory _messageFactory;
         private readonly ICustomerActivityService _customerActivityService;
         private readonly ICurrencyService _currencyService;
 		private readonly IAffiliateService _affiliateService;
@@ -78,55 +74,19 @@ namespace SmartStore.Services.Orders
         private readonly LocalizationSettings _localizationSettings;
         private readonly CurrencySettings _currencySettings;
 		private readonly ShoppingCartSettings _shoppingCartSettings;
+        private readonly CatalogSettings _catalogSettings;
 
-		#endregion
+        #endregion
 
-		#region Ctor
+        #region Ctor
 
-		/// <summary>
-		/// Ctor
-		/// </summary>
-		/// <param name="orderService">Order service</param>
-		/// <param name="webHelper">Web helper</param>
-		/// <param name="localizationService">Localization service</param>
-		/// <param name="languageService">Language service</param>
-		/// <param name="productService">Product service</param>
-		/// <param name="paymentService">Payment service</param>
-		/// <param name="logger">Logger</param>
-		/// <param name="orderTotalCalculationService">Order total calculationservice</param>
-		/// <param name="priceCalculationService">Price calculation service</param>
-		/// <param name="priceFormatter">Price formatter</param>
-		/// <param name="productAttributeParser">Product attribute parser</param>
-		/// <param name="productAttributeFormatter">Product attribute formatter</param>
-		/// <param name="giftCardService">Gift card service</param>
-		/// <param name="shoppingCartService">Shopping cart service</param>
-		/// <param name="checkoutAttributeFormatter">Checkout attribute service</param>
-		/// <param name="shippingService">Shipping service</param>
-		/// <param name="shipmentService">Shipment service</param>
-		/// <param name="taxService">Tax service</param>
-		/// <param name="customerService">Customer service</param>
-		/// <param name="discountService">Discount service</param>
-		/// <param name="encryptionService">Encryption service</param>
-		/// <param name="workContext">Work context</param>
-		/// <param name="storeContext">Store context</param>
-		/// <param name="workflowMessageService">Workflow message service</param>
-		/// <param name="customerActivityService">Customer activity service</param>
-		/// <param name="currencyService">Currency service</param>
-		/// <param name="affiliateService">Affiliate service</param>
-		/// <param name="eventPublisher">Event published</param>
-		/// <param name="paymentSettings">Payment settings</param>
-		/// <param name="rewardPointsSettings">Reward points settings</param>
-		/// <param name="orderSettings">Order settings</param>
-		/// <param name="taxSettings">Tax settings</param>
-		/// <param name="localizationSettings">Localization settings</param>
-		/// <param name="currencySettings">Currency settings</param>
-		public OrderProcessingService(IOrderService orderService,
+        public OrderProcessingService(
+			IOrderService orderService,
             IWebHelper webHelper,
             ILocalizationService localizationService,
             ILanguageService languageService,
             IProductService productService,
             IPaymentService paymentService,
-            ILogger logger,
             IOrderTotalCalculationService orderTotalCalculationService,
             IPriceCalculationService priceCalculationService,
             IPriceFormatter priceFormatter,
@@ -143,7 +103,7 @@ namespace SmartStore.Services.Orders
             IEncryptionService encryptionService,
             IWorkContext workContext,
 			IStoreContext storeContext,
-            IWorkflowMessageService workflowMessageService,
+            IMessageFactory messageFactory,
             ICustomerActivityService customerActivityService,
             ICurrencyService currencyService,
 			IAffiliateService affiliateService,
@@ -156,58 +116,70 @@ namespace SmartStore.Services.Orders
             TaxSettings taxSettings,
             LocalizationSettings localizationSettings,
             CurrencySettings currencySettings,
-			ShoppingCartSettings shoppingCartSettings)
+			ShoppingCartSettings shoppingCartSettings,
+            CatalogSettings catalogSettings)
         {
-            this._orderService = orderService;
-            this._webHelper = webHelper;
-            this._localizationService = localizationService;
-            this._languageService = languageService;
-            this._productService = productService;
-            this._paymentService = paymentService;
-            this._logger = logger;
-            this._orderTotalCalculationService = orderTotalCalculationService;
-            this._priceCalculationService = priceCalculationService;
-            this._priceFormatter = priceFormatter;
-            this._productAttributeParser = productAttributeParser;
-            this._productAttributeFormatter = productAttributeFormatter;
-            this._giftCardService = giftCardService;
-            this._shoppingCartService = shoppingCartService;
-            this._checkoutAttributeFormatter = checkoutAttributeFormatter;
-            this._workContext = workContext;
-			this._storeContext = storeContext;
-            this._workflowMessageService = workflowMessageService;
-            this._shippingService = shippingService;
-            this._shipmentService = shipmentService;
-            this._taxService = taxService;
-            this._customerService = customerService;
-            this._discountService = discountService;
-            this._encryptionService = encryptionService;
-            this._customerActivityService = customerActivityService;
-            this._currencyService = currencyService;
-			this._affiliateService = affiliateService;
-            this._eventPublisher = eventPublisher;
-			this._genericAttributeService = genericAttributeService;
-			this._newsLetterSubscriptionService = newsLetterSubscriptionService;
-            this._paymentSettings = paymentSettings;
-            this._rewardPointsSettings = rewardPointsSettings;
-            this._orderSettings = orderSettings;
-            this._taxSettings = taxSettings;
-            this._localizationSettings = localizationSettings;
-            this._currencySettings = currencySettings;
-			this._shoppingCartSettings = shoppingCartSettings;
+            _orderService = orderService;
+            _webHelper = webHelper;
+            _localizationService = localizationService;
+            _languageService = languageService;
+            _productService = productService;
+            _paymentService = paymentService;
+            _orderTotalCalculationService = orderTotalCalculationService;
+            _priceCalculationService = priceCalculationService;
+            _priceFormatter = priceFormatter;
+            _productAttributeParser = productAttributeParser;
+            _productAttributeFormatter = productAttributeFormatter;
+            _giftCardService = giftCardService;
+            _shoppingCartService = shoppingCartService;
+            _checkoutAttributeFormatter = checkoutAttributeFormatter;
+            _workContext = workContext;
+			_storeContext = storeContext;
+            _messageFactory = messageFactory;
+            _shippingService = shippingService;
+            _shipmentService = shipmentService;
+            _taxService = taxService;
+            _customerService = customerService;
+            _discountService = discountService;
+            _encryptionService = encryptionService;
+            _customerActivityService = customerActivityService;
+            _currencyService = currencyService;
+			_affiliateService = affiliateService;
+            _eventPublisher = eventPublisher;
+			_genericAttributeService = genericAttributeService;
+			_newsLetterSubscriptionService = newsLetterSubscriptionService;
+            _paymentSettings = paymentSettings;
+            _rewardPointsSettings = rewardPointsSettings;
+            _orderSettings = orderSettings;
+            _taxSettings = taxSettings;
+            _localizationSettings = localizationSettings;
+            _currencySettings = currencySettings;
+			_shoppingCartSettings = shoppingCartSettings;
+            _catalogSettings = catalogSettings;
 
 			T = NullLocalizer.Instance;
+			Logger = NullLogger.Instance;
 		}
 
 		public Localizer T { get; set; }
+		public ILogger Logger { get; set; }
 
 		#endregion
 
 		#region Utilities
 
-		private decimal Round(decimal value)
+		protected string FormatTaxRates(SortedDictionary<decimal, decimal> taxRates)
 		{
-			return (_shoppingCartSettings.RoundPricesDuringCalculation ? Math.Round(value, 2) : value);
+			var result = string.Empty;
+
+			foreach (var rate in taxRates)
+			{
+				result += "{0}:{1};   ".FormatInvariant(
+					rate.Key.ToString(CultureInfo.InvariantCulture),
+					rate.Value.ToString(CultureInfo.InvariantCulture));
+			}
+			
+			return result;
 		}
 
 		private void ProcessErrors(Order order, IList<string> errors, string messageKey)
@@ -217,7 +189,7 @@ namespace SmartStore.Services.Orders
 				var msg = string.Concat(T(messageKey, order.GetOrderNumber()), " ", string.Join(" ", errors));
 
 				_orderService.AddOrderNote(order, msg);
-				_logger.Error(msg);
+				Logger.Error(msg);
 			}
 		}
 
@@ -315,19 +287,15 @@ namespace SmartStore.Services.Orders
 
                     if (gc.GiftCardType == GiftCardType.Virtual)
                     {
-                        //send email for virtual gift card
+                        // Send email for virtual gift card
                         if (!String.IsNullOrEmpty(gc.RecipientEmail) && !String.IsNullOrEmpty(gc.SenderEmail))
                         {
                             var customerLang = _languageService.GetLanguageById(order.CustomerLanguageId);
                             if (customerLang == null)
                                 customerLang = _languageService.GetAllLanguages().FirstOrDefault();
 
-                            var queuedEmailId = _workflowMessageService.SendGiftCardNotification(gc, customerLang.Id);
-
-							if (queuedEmailId > 0)
-							{
-								isRecipientNotified = true;
-							}
+                            var qe = _messageFactory.SendGiftCardNotification(gc, customerLang.Id);
+							isRecipientNotified = qe?.Email.Id != null;
                         }
                     }
 
@@ -370,20 +338,20 @@ namespace SmartStore.Services.Orders
             if (prevOrderStatus != OrderStatus.Complete && os == OrderStatus.Complete && notifyCustomer)
             {
                 //notification
-                int orderCompletedCustomerNotificationQueuedEmailId = _workflowMessageService.SendOrderCompletedCustomerNotification(order, order.CustomerLanguageId);
-                if (orderCompletedCustomerNotificationQueuedEmailId > 0)
+                var msg = _messageFactory.SendOrderCompletedCustomerNotification(order, order.CustomerLanguageId);
+                if (msg?.Email?.Id != null)
                 {
-					_orderService.AddOrderNote(order, T("Admin.OrderNotice.CustomerCompletedEmailQueued", orderCompletedCustomerNotificationQueuedEmailId));
+					_orderService.AddOrderNote(order, T("Admin.OrderNotice.CustomerCompletedEmailQueued", msg.Email.Id));
                 }
             }
 
             if (prevOrderStatus != OrderStatus.Cancelled && os == OrderStatus.Cancelled && notifyCustomer)
             {
                 //notification
-                int orderCancelledCustomerNotificationQueuedEmailId = _workflowMessageService.SendOrderCancelledCustomerNotification(order, order.CustomerLanguageId);
-                if (orderCancelledCustomerNotificationQueuedEmailId > 0)
+                var msg = _messageFactory.SendOrderCancelledCustomerNotification(order, order.CustomerLanguageId);
+                if (msg?.Email?.Id != null)
                 {
-					_orderService.AddOrderNote(order, T("Admin.OrderNotice.CustomerCancelledEmailQueued", orderCancelledCustomerNotificationQueuedEmailId));
+					_orderService.AddOrderNote(order, T("Admin.OrderNotice.CustomerCancelledEmailQueued", msg.Email.Id));
                 }
             }
 
@@ -459,45 +427,321 @@ namespace SmartStore.Services.Orders
 
         #region Methods
 
-        /// <summary>
-        /// Places an order
-        /// </summary>
-        /// <param name="processPaymentRequest">Process payment request</param>
-        /// <returns>Place order result</returns>
+        public virtual bool IsMinimumOrderPlacementIntervalValid(Customer customer, Store store)
+        {
+            Guard.NotNull(customer, nameof(customer));
+            Guard.NotNull(store, nameof(store));
+
+            // Prevent 2 orders being placed within an X seconds time frame.
+            if (_orderSettings.MinimumOrderPlacementInterval == 0)
+            {
+                return true;
+            }
+
+            var lastOrder = _orderService.SearchOrders(store.Id, customer.Id, null, null, null, null, null, null, null, null, 0, 1).FirstOrDefault();
+            if (lastOrder == null)
+            {
+                return true;
+            }
+
+            var interval = DateTime.UtcNow - lastOrder.CreatedOnUtc;
+            return interval.TotalSeconds > _orderSettings.MinimumOrderPlacementInterval;
+        }
+
+        public virtual IList<string> GetOrderPlacementWarnings(ProcessPaymentRequest processPaymentRequest)
+        {
+            Guard.NotNull(processPaymentRequest, nameof(processPaymentRequest));
+
+            var initialOrder = _orderService.GetOrderById(processPaymentRequest.InitialOrderId);
+            var customer = _customerService.GetCustomerById(processPaymentRequest.CustomerId);
+
+            return GetOrderPlacementWarnings(processPaymentRequest, initialOrder, customer, out var cart);
+        }
+
+        public virtual IList<string> GetOrderPlacementWarnings(
+            ProcessPaymentRequest processPaymentRequest,
+            Order initialOrder,
+            Customer customer,
+            out IList<OrganizedShoppingCartItem> cart)
+        {
+            Guard.NotNull(processPaymentRequest, nameof(processPaymentRequest));
+
+            cart = null;
+
+            var warnings = new List<string>();
+            var skipPaymentWorkflow = false;
+            var isRecurringShoppingCart = false;
+            var paymentMethodSystemName = processPaymentRequest.PaymentMethodSystemName;
+
+            if (customer == null)
+            {
+                warnings.Add(T("Customer.DoesNotExist"));
+                return warnings;
+            }
+
+            // Check whether guest checkout is allowed.
+            if (customer.IsGuest() && !_orderSettings.AnonymousCheckoutAllowed)
+            {
+                warnings.Add(T("Checkout.AnonymousNotAllowed"));
+                return warnings;
+            }
+
+            if (!processPaymentRequest.IsRecurringPayment)
+            {
+                if (processPaymentRequest.ShoppingCartItemIds.Any())
+                {
+                    cart = customer.GetCartItems(ShoppingCartType.ShoppingCart, processPaymentRequest.StoreId)
+                        .Where(x => processPaymentRequest.ShoppingCartItemIds.Contains(x.Item.Id))
+                        .ToList();
+                }
+                else
+                {
+                    cart = customer.GetCartItems(ShoppingCartType.ShoppingCart, processPaymentRequest.StoreId);
+                }
+
+                if (!cart.Any())
+                {
+                    warnings.Add(T("ShoppingCart.CartIsEmpty"));
+                    return warnings;
+                }
+
+                // Validate the entire shopping cart.
+                var cartWarnings = _shoppingCartService.GetShoppingCartWarnings(cart, customer.GetAttribute<string>(SystemCustomerAttributeNames.CheckoutAttributes), true);
+                if (cartWarnings.Any())
+                {
+                    warnings.AddRange(cartWarnings);
+                    return warnings;
+                }
+
+                // Validate individual cart items.
+                foreach (var sci in cart)
+                {
+                    var sciWarnings = _shoppingCartService.GetShoppingCartItemWarnings(customer, sci.Item.ShoppingCartType,
+                        sci.Item.Product, processPaymentRequest.StoreId, sci.Item.AttributesXml,
+                        sci.Item.CustomerEnteredPrice, sci.Item.Quantity, false, childItems: sci.ChildItems);
+
+                    if (sciWarnings.Any())
+                    {
+                        warnings.AddRange(sciWarnings);
+                        return warnings;
+                    }
+                }
+
+                // Min totals validation.
+                var minOrderSubtotalAmountOk = ValidateMinOrderSubtotalAmount(cart);
+                if (!minOrderSubtotalAmountOk)
+                {
+                    var minOrderSubtotalAmount = _currencyService.ConvertFromPrimaryStoreCurrency(_orderSettings.MinOrderSubtotalAmount, _workContext.WorkingCurrency);
+                    warnings.Add(T("Checkout.MinOrderSubtotalAmount", _priceFormatter.FormatPrice(minOrderSubtotalAmount, true, false)));
+                    return warnings;
+                }
+
+                var minOrderTotalAmountOk = ValidateMinOrderTotalAmount(cart);
+                if (!minOrderTotalAmountOk)
+                {
+                    var minOrderTotalAmount = _currencyService.ConvertFromPrimaryStoreCurrency(_orderSettings.MinOrderTotalAmount, _workContext.WorkingCurrency);
+                    warnings.Add(T("Checkout.MinOrderTotalAmount", _priceFormatter.FormatPrice(minOrderTotalAmount, true, false)));
+                    return warnings;
+                }
+
+                // Total validations.
+                var orderShippingTotalInclTax = _orderTotalCalculationService.GetShoppingCartShippingTotal(cart, true, out var orderShippingTaxRate, out var shippingTotalDiscount);
+                var orderShippingTotalExclTax = _orderTotalCalculationService.GetShoppingCartShippingTotal(cart, false);
+
+                if (!orderShippingTotalInclTax.HasValue || !orderShippingTotalExclTax.HasValue)
+                {
+                    warnings.Add(T("Order.CannotCalculateShippingTotal"));
+                    return warnings;
+                }
+
+                var cartTotal = _orderTotalCalculationService.GetShoppingCartTotal(cart);
+                if (!cartTotal.TotalAmount.HasValue)
+                {
+                    warnings.Add(T("Order.CannotCalculateOrderTotal"));
+                    return warnings;
+                }
+
+                skipPaymentWorkflow = cartTotal.TotalAmount.Value == decimal.Zero;
+
+                // Address validations.
+                if (customer.BillingAddress == null)
+                {
+                    warnings.Add(T("Order.BillingAddressMissing"));
+                }
+                else if (!customer.BillingAddress.Email.IsEmail())
+                {
+                    warnings.Add(T("Common.Error.InvalidEmail"));
+                }
+                else if (customer.BillingAddress.Country != null && !customer.BillingAddress.Country.AllowsBilling)
+                {
+                    warnings.Add(T("Order.CountryNotAllowedForBilling", customer.BillingAddress.Country.Name));
+                }
+
+                if (cart.RequiresShipping())
+                {
+                    if (customer.ShippingAddress == null)
+                    {
+                        warnings.Add(T("Order.ShippingAddressMissing"));
+                        throw new SmartException();
+                    }
+                    else if (!customer.ShippingAddress.Email.IsEmail())
+                    {
+                        warnings.Add(T("Common.Error.InvalidEmail"));
+                    }
+                    else if (customer.ShippingAddress.Country != null && !customer.ShippingAddress.Country.AllowsShipping)
+                    {
+                        warnings.Add(T("Order.CountryNotAllowedForShipping", customer.ShippingAddress.Country.Name));
+                    }
+                }
+            }
+            else
+            {
+                // Recurring order.
+                if (initialOrder == null)
+                {
+                    warnings.Add(T("Order.InitialOrderDoesNotExistForRecurringPayment"));
+                    return warnings;
+                }
+
+                var cartTotal = new ShoppingCartTotal(initialOrder.OrderTotal);
+                skipPaymentWorkflow = cartTotal.TotalAmount.Value == decimal.Zero;
+                paymentMethodSystemName = initialOrder.PaymentMethodSystemName;
+
+                // Address validations.
+                if (initialOrder.BillingAddress == null)
+                {
+                    warnings.Add(T("Order.BillingAddressMissing"));
+                }
+                else if (initialOrder.BillingAddress.Country != null && !initialOrder.BillingAddress.Country.AllowsBilling)
+                {
+                    warnings.Add(T("Order.CountryNotAllowedForBilling", initialOrder.BillingAddress.Country.Name));
+                }
+
+                if (initialOrder.ShippingStatus != ShippingStatus.ShippingNotRequired)
+                {
+                    if (initialOrder.ShippingAddress == null)
+                    {
+                        warnings.Add(T("Order.ShippingAddressMissing"));
+                    }
+                    else if (initialOrder.ShippingAddress.Country != null && !initialOrder.ShippingAddress.Country.AllowsShipping)
+                    {
+                        warnings.Add(T("Order.CountryNotAllowedForShipping", initialOrder.ShippingAddress.Country.Name));
+                    }
+                }
+            }
+
+            // Payment.
+            if (!warnings.Any() && !skipPaymentWorkflow)
+            {
+                var paymentMethod = _paymentService.LoadPaymentMethodBySystemName(paymentMethodSystemName);
+                if (paymentMethod == null)
+                {
+                    warnings.Add(T("Payment.CouldNotLoadMethod"));
+                }
+                else if (!paymentMethod.IsPaymentMethodActive(_paymentSettings))
+                {
+                    warnings.Add(T("Payment.MethodNotAvailable"));
+                }
+            }
+
+            // Recurring or standard shopping cart?
+            if (!warnings.Any() && !processPaymentRequest.IsRecurringPayment)
+            {
+                isRecurringShoppingCart = cart.IsRecurring();
+                if (isRecurringShoppingCart)
+                {
+                    var recurringCyclesError = cart.GetRecurringCycleInfo(_localizationService, out var recurringCycleLength, out var recurringCyclePeriod, out var recurringTotalCycles);
+                    if (recurringCyclesError.HasValue())
+                    {
+                        warnings.Add(recurringCyclesError);
+                    }
+                }
+            }
+            else
+            {
+                isRecurringShoppingCart = true;
+            }
+
+            // Validate recurring payment type.
+            if (!warnings.Any() && !skipPaymentWorkflow && !processPaymentRequest.IsMultiOrder)
+            {
+                RecurringPaymentType? recurringPaymentType = null;
+
+                if (!processPaymentRequest.IsRecurringPayment)
+                {
+                    if (isRecurringShoppingCart)
+                    {
+                        recurringPaymentType = _paymentService.GetRecurringPaymentType(processPaymentRequest.PaymentMethodSystemName);
+                    }
+                }
+                else
+                {
+                    if (isRecurringShoppingCart)
+                    {
+                        recurringPaymentType = _paymentService.GetRecurringPaymentType(processPaymentRequest.PaymentMethodSystemName);
+                    }
+                    else
+                    {
+                        warnings.Add(T("Order.NoRecurringProducts"));
+                    }
+                }
+
+                if (recurringPaymentType.HasValue)
+                {
+                    switch (recurringPaymentType.Value)
+                    {
+                        case RecurringPaymentType.NotSupported:
+                            warnings.Add(T("Payment.RecurringPaymentNotSupported"));
+                            break;
+                        case RecurringPaymentType.Manual:
+                        case RecurringPaymentType.Automatic:
+                            break;
+                        default:
+                            warnings.Add(T("Payment.RecurringPaymentTypeUnknown"));
+                            break;
+                    }
+                }
+            }
+
+            return warnings;
+        }
+
         public virtual PlaceOrderResult PlaceOrder(
             ProcessPaymentRequest processPaymentRequest, 
             Dictionary<string, string> extraData)
         {
-            // think about moving functionality of processing recurring orders (after the initial order was placed) to ProcessNextRecurringPayment() method
-            if (processPaymentRequest == null)
-                throw new ArgumentNullException("processPaymentRequest");
+            // Think about moving functionality of processing recurring orders (after the initial order was placed) to ProcessNextRecurringPayment() method.
+            Guard.NotNull(processPaymentRequest, nameof(processPaymentRequest));
 
             if (processPaymentRequest.OrderGuid == Guid.Empty)
+            {
                 processPaymentRequest.OrderGuid = Guid.NewGuid();
+            }
 
             var result = new PlaceOrderResult();
 			var utcNow = DateTime.UtcNow;
 
             try
             {
-                #region Order details (customer, totals)
-
-                // Recurring orders. Load initial order
                 var initialOrder = _orderService.GetOrderById(processPaymentRequest.InitialOrderId);
+                var customer = _customerService.GetCustomerById(processPaymentRequest.CustomerId);
+
+                var warnings = GetOrderPlacementWarnings(processPaymentRequest, initialOrder, customer, out var cart);
+                if (warnings.Any())
+                {
+                    result.Errors.AddRange(warnings);
+                    Logger.Warn(string.Join(" ", result.Errors));
+                    return result;
+                }
+
+                #region Order details
+
                 if (processPaymentRequest.IsRecurringPayment)
                 {
-                    if (initialOrder == null)
-                        throw new ArgumentException(T("Order.InitialOrderDoesNotExistForRecurringPayment"));
-
                     processPaymentRequest.PaymentMethodSystemName = initialOrder.PaymentMethodSystemName;
                 }
 
-                // customer
-                var customer = _customerService.GetCustomerById(processPaymentRequest.CustomerId);
-                if (customer == null)
-                    throw new ArgumentException(T("Customer.DoesNotExist"));
-
-				// affilites
+				// Affilites.
 				var affiliateId = 0;
 				var affiliate = _affiliateService.GetAffiliateById(customer.AffiliateId);
 				if (affiliate != null && affiliate.Active && !affiliate.Deleted)
@@ -505,9 +749,9 @@ namespace SmartStore.Services.Orders
 					affiliateId = affiliate.Id;
 				}
 
-                // customer currency
-                string customerCurrencyCode = "";
-                decimal customerCurrencyRate = decimal.Zero;
+                // Customer currency.
+                var customerCurrencyCode = string.Empty;
+                var customerCurrencyRate = decimal.Zero;
                 if (!processPaymentRequest.IsRecurringPayment)
                 {
 					var currencyTmp = _currencyService.GetCurrencyById(customer.GetAttribute<int>(SystemCustomerAttributeNames.CurrencyId, processPaymentRequest.StoreId));
@@ -515,7 +759,6 @@ namespace SmartStore.Services.Orders
                     customerCurrencyCode = customerCurrency.CurrencyCode;
 
                     var primaryStoreCurrency = _storeContext.CurrentStore.PrimaryStoreCurrency;
-
                     customerCurrencyRate = customerCurrency.Rate / primaryStoreCurrency.Rate;
                 }
                 else
@@ -524,7 +767,7 @@ namespace SmartStore.Services.Orders
                     customerCurrencyRate = initialOrder.CurrencyRate;
                 }
 
-                // customer language
+                // Customer language.
                 Language customerLanguage = null;
                 if (!processPaymentRequest.IsRecurringPayment)
 				{
@@ -539,66 +782,8 @@ namespace SmartStore.Services.Orders
 				{
 					customerLanguage = _workContext.WorkingLanguage;
 				}
-
-                // check whether customer is guest
-                if (customer.IsGuest() && !_orderSettings.AnonymousCheckoutAllowed)
-                    throw new SmartException(T("Checkout.AnonymousNotAllowed"));
-
-				var storeId = _storeContext.CurrentStore.Id;
-                
-                // load and validate customer shopping cart
-                IList<OrganizedShoppingCartItem> cart = null;
-                if (!processPaymentRequest.IsRecurringPayment)
-                {
-                    //load shopping cart
-                    if (processPaymentRequest.ShoppingCartItemIds.Count > 0)
-                    {
-                        cart = customer.GetCartItems(ShoppingCartType.ShoppingCart, processPaymentRequest.StoreId)
-                            .Where(x => processPaymentRequest.ShoppingCartItemIds.Contains(x.Item.Id))
-                            .ToList();
-                    }
-                    else
-                        cart = customer.GetCartItems(ShoppingCartType.ShoppingCart, processPaymentRequest.StoreId);
-
-                    if (cart.Count == 0)
-                        throw new SmartException(T("ShoppingCart.CartIsEmpty"));
-
-					// validate the entire shopping cart
-					var warnings = _shoppingCartService.GetShoppingCartWarnings(cart, customer.GetAttribute<string>(SystemCustomerAttributeNames.CheckoutAttributes), true);
-                    if (warnings.Count > 0)
-                        throw new SmartException(string.Join(" ", warnings));
-
-                    // validate individual cart items
-                    foreach (var sci in cart)
-                    {
-                        var sciWarnings = _shoppingCartService.GetShoppingCartItemWarnings(customer, sci.Item.ShoppingCartType,
-							sci.Item.Product, processPaymentRequest.StoreId, sci.Item.AttributesXml,
-                            sci.Item.CustomerEnteredPrice, sci.Item.Quantity, false, childItems: sci.ChildItems);
-
-                        if (sciWarnings.Count > 0)
-							throw new SmartException(string.Join(" ", sciWarnings));
-                    }
-                }
-
-                // min totals validation
-                if (!processPaymentRequest.IsRecurringPayment)
-                {
-                    var minOrderSubtotalAmountOk = ValidateMinOrderSubtotalAmount(cart);
-                    if (!minOrderSubtotalAmountOk)
-                    {
-                        var minOrderSubtotalAmount = _currencyService.ConvertFromPrimaryStoreCurrency(_orderSettings.MinOrderSubtotalAmount, _workContext.WorkingCurrency);
-                        throw new SmartException(T("Checkout.MinOrderSubtotalAmount", _priceFormatter.FormatPrice(minOrderSubtotalAmount, true, false)));
-                    }
-
-                    var minOrderTotalAmountOk = ValidateMinOrderTotalAmount(cart);
-                    if (!minOrderTotalAmountOk)
-                    {
-                        var minOrderTotalAmount = _currencyService.ConvertFromPrimaryStoreCurrency(_orderSettings.MinOrderTotalAmount, _workContext.WorkingCurrency);
-                        throw new SmartException(T("Checkout.MinOrderTotalAmount", _priceFormatter.FormatPrice(minOrderTotalAmount, true, false)));
-                    }
-                }
-                
-                // tax display type
+                                
+                // Tax display type.
                 var customerTaxDisplayType = TaxDisplayType.IncludingTax;
                 if (!processPaymentRequest.IsRecurringPayment)
                 {
@@ -609,7 +794,7 @@ namespace SmartStore.Services.Orders
                     customerTaxDisplayType = initialOrder.CustomerTaxDisplayType;
                 }
 
-                // checkout attributes
+                // Checkout attributes.
                 string checkoutAttributeDescription, checkoutAttributesXml;
                 if (!processPaymentRequest.IsRecurringPayment)
                 {
@@ -622,38 +807,28 @@ namespace SmartStore.Services.Orders
                     checkoutAttributeDescription = initialOrder.CheckoutAttributeDescription;
                 }
 
-                // applied discount (used to store discount usage history)
+                // Applied discount (used to store discount usage history).
                 var appliedDiscounts = new List<Discount>();
-
-                // sub total
                 decimal orderSubTotalInclTax, orderSubTotalExclTax;
                 decimal orderSubTotalDiscountInclTax = 0, orderSubTotalDiscountExclTax = 0;
                 if (!processPaymentRequest.IsRecurringPayment)
                 {
-                    // sub total (incl tax)
-                    decimal orderSubTotalDiscountAmount1 = decimal.Zero;
-                    Discount orderSubTotalAppliedDiscount1 = null;
-                    decimal subTotalWithoutDiscountBase1 = decimal.Zero;
-                    decimal subTotalWithDiscountBase1 = decimal.Zero;
-
-                    _orderTotalCalculationService.GetShoppingCartSubTotal(cart,
-                        true, out orderSubTotalDiscountAmount1, out orderSubTotalAppliedDiscount1, out subTotalWithoutDiscountBase1, out subTotalWithDiscountBase1);
+                    // Sub total (incl tax).
+                    _orderTotalCalculationService.GetShoppingCartSubTotal(cart, true,
+                        out var orderSubTotalDiscountAmount1, out var orderSubTotalAppliedDiscount1, out var subTotalWithoutDiscountBase1, out var subTotalWithDiscountBase1);
 
                     orderSubTotalInclTax = subTotalWithoutDiscountBase1;
                     orderSubTotalDiscountInclTax = orderSubTotalDiscountAmount1;
 
-                    // discount history
+                    // Discount history.
                     if (orderSubTotalAppliedDiscount1 != null && !appliedDiscounts.Any(x => x.Id == orderSubTotalAppliedDiscount1.Id))
+                    {
                         appliedDiscounts.Add(orderSubTotalAppliedDiscount1);
+                    }
 
-                    // sub total (excl tax)
-                    decimal orderSubTotalDiscountAmount2 = decimal.Zero;
-                    Discount orderSubTotalAppliedDiscount2 = null;
-                    decimal subTotalWithoutDiscountBase2 = decimal.Zero;
-                    decimal subTotalWithDiscountBase2 = decimal.Zero;
-
-                    _orderTotalCalculationService.GetShoppingCartSubTotal(cart,
-                        false, out orderSubTotalDiscountAmount2, out orderSubTotalAppliedDiscount2, out subTotalWithoutDiscountBase2, out subTotalWithDiscountBase2);
+                    // Sub total (excl tax).
+                    _orderTotalCalculationService.GetShoppingCartSubTotal(cart, false,
+                        out var orderSubTotalDiscountAmount2, out var orderSubTotalAppliedDiscount2, out var subTotalWithoutDiscountBase2, out var subTotalWithDiscountBase2);
 
                     orderSubTotalExclTax = subTotalWithoutDiscountBase2;
                     orderSubTotalDiscountExclTax = orderSubTotalDiscountAmount2;
@@ -665,8 +840,8 @@ namespace SmartStore.Services.Orders
                 }
 
 
-                // shipping info
-                bool shoppingCartRequiresShipping = false;
+                // Shipping info.
+                var shoppingCartRequiresShipping = false;
                 if (!processPaymentRequest.IsRecurringPayment)
                 {
                     shoppingCartRequiresShipping = cart.RequiresShipping();
@@ -695,19 +870,18 @@ namespace SmartStore.Services.Orders
                     }
                 }
 
-                // shipping total
+                // Shipping total.
                 decimal? orderShippingTotalInclTax, orderShippingTotalExclTax = null;
 				decimal orderShippingTaxRate = decimal.Zero;
                 if (!processPaymentRequest.IsRecurringPayment)
                 {
-                    Discount shippingTotalDiscount = null;
-                    orderShippingTotalInclTax = _orderTotalCalculationService.GetShoppingCartShippingTotal(cart, true, out orderShippingTaxRate, out shippingTotalDiscount);
+                    orderShippingTotalInclTax = _orderTotalCalculationService.GetShoppingCartShippingTotal(cart, true, out orderShippingTaxRate, out var shippingTotalDiscount);
                     orderShippingTotalExclTax = _orderTotalCalculationService.GetShoppingCartShippingTotal(cart, false);
-                    if (!orderShippingTotalInclTax.HasValue || !orderShippingTotalExclTax.HasValue)
-                        throw new SmartException(T("Order.CannotCalculateShippingTotal"));
 
                     if (shippingTotalDiscount != null && !appliedDiscounts.Any(x => x.Id == shippingTotalDiscount.Id))
+                    {
                         appliedDiscounts.Add(shippingTotalDiscount);
+                    }
                 }
                 else
                 {
@@ -716,11 +890,11 @@ namespace SmartStore.Services.Orders
 					orderShippingTaxRate = initialOrder.OrderShippingTaxRate;
                 }
 
-                //payment total
+                // Payment total.
 				decimal paymentAdditionalFeeInclTax, paymentAdditionalFeeExclTax, paymentAdditionalFeeTaxRate;
                 if (!processPaymentRequest.IsRecurringPayment)
                 {
-                    decimal paymentAdditionalFee = _paymentService.GetAdditionalHandlingFee(cart, processPaymentRequest.PaymentMethodSystemName);
+                    var paymentAdditionalFee = _paymentService.GetAdditionalHandlingFee(cart, processPaymentRequest.PaymentMethodSystemName);
                     paymentAdditionalFeeInclTax = _taxService.GetPaymentMethodAdditionalFee(paymentAdditionalFee, true, customer, out paymentAdditionalFeeTaxRate);
                     paymentAdditionalFeeExclTax = _taxService.GetPaymentMethodAdditionalFee(paymentAdditionalFee, false, customer);
                 }
@@ -731,71 +905,57 @@ namespace SmartStore.Services.Orders
 					paymentAdditionalFeeTaxRate = initialOrder.PaymentMethodAdditionalFeeTaxRate;
                 }
 
-                //tax total
-                decimal orderTaxTotal = decimal.Zero;
+                // Tax total.
+                var orderTaxTotal = decimal.Zero;
                 string vatNumber = "", taxRates = "";
                 if (!processPaymentRequest.IsRecurringPayment)
                 {
-                    //tax amount
-                    SortedDictionary<decimal, decimal> taxRatesDictionary = null;
-                    orderTaxTotal = _orderTotalCalculationService.GetTaxTotal(cart, out taxRatesDictionary);
+                    // Tax amount.
+                    orderTaxTotal = _orderTotalCalculationService.GetTaxTotal(cart, out var taxRatesDictionary);
 
-                    //VAT number
+                    // VAT number.
 					var customerVatStatus = (VatNumberStatus)customer.GetAttribute<int>(SystemCustomerAttributeNames.VatNumberStatusId);
 					if (_taxSettings.EuVatEnabled && customerVatStatus == VatNumberStatus.Valid)
 					{
 						vatNumber = customer.GetAttribute<string>(SystemCustomerAttributeNames.VatNumber);
 					}
 
-                    //tax rates
-                    foreach (var kvp in taxRatesDictionary)
-                    {
-                        var taxRate = kvp.Key;
-                        var taxValue = kvp.Value;
-                        taxRates += string.Format("{0}:{1};   ", taxRate.ToString(CultureInfo.InvariantCulture), taxValue.ToString(CultureInfo.InvariantCulture));
-                    }
+					taxRates = FormatTaxRates(taxRatesDictionary);
                 }
                 else
                 {
                     orderTaxTotal = initialOrder.OrderTax;
-                    //VAT number
                     vatNumber = initialOrder.VatNumber;
                 }
+
 				processPaymentRequest.OrderTax = orderTaxTotal;
 
-                //order total (and applied discounts, gift cards, reward points)
-                decimal? orderTotal = null;
-                decimal orderDiscountAmount = decimal.Zero;
-                List<AppliedGiftCard> appliedGiftCards = null;
-                int redeemedRewardPoints = 0;
-                decimal redeemedRewardPointsAmount = decimal.Zero;
+                // Order total (and applied discounts, gift cards, reward points).
+                ShoppingCartTotal cartTotal = null;
+
                 if (!processPaymentRequest.IsRecurringPayment)
                 {
-                    Discount orderAppliedDiscount = null;
-                    orderTotal = _orderTotalCalculationService.GetShoppingCartTotal(cart,
-                        out orderDiscountAmount, out orderAppliedDiscount, out appliedGiftCards, out redeemedRewardPoints, out redeemedRewardPointsAmount);
+                    cartTotal = _orderTotalCalculationService.GetShoppingCartTotal(cart);
 
-                    if (!orderTotal.HasValue)
-                        throw new SmartException(T("Order.CannotCalculateOrderTotal"));
-
-					//discount history
-					if (orderAppliedDiscount != null && !appliedDiscounts.Any(x => x.Id == orderAppliedDiscount.Id))
+					// Discount history.
+					if (cartTotal.AppliedDiscount != null && !appliedDiscounts.Any(x => x.Id == cartTotal.AppliedDiscount.Id))
 					{
-						appliedDiscounts.Add(orderAppliedDiscount);
+						appliedDiscounts.Add(cartTotal.AppliedDiscount);
 					}
                 }
                 else
                 {
-                    orderDiscountAmount = initialOrder.OrderDiscount;
-                    orderTotal = initialOrder.OrderTotal;
+                    cartTotal = new ShoppingCartTotal(initialOrder.OrderTotal);
+                    cartTotal.DiscountAmount = initialOrder.OrderDiscount;
                 }
-                processPaymentRequest.OrderTotal = orderTotal.Value;
+
+                processPaymentRequest.OrderTotal = cartTotal.TotalAmount.Value;
 
                 #endregion
 
-				#region Addresses & pre payment workflow
+				#region Addresses & pre-payment workflow
 				
-				// give payment processor the opportunity to fullfill billing address
+				// Give payment processor the opportunity to fullfill billing address.
 				var preProcessPaymentResult = _paymentService.PreProcessPayment(processPaymentRequest);
 
 				if (!preProcessPaymentResult.Success)
@@ -805,95 +965,44 @@ namespace SmartStore.Services.Orders
 					return result;					
 				}
 
-				Address billingAddress = null;
-				if (!processPaymentRequest.IsRecurringPayment)
-				{
-					if (customer.BillingAddress == null)
-						throw new SmartException(T("Order.BillingAddressMissing"));
-
-					if (!customer.BillingAddress.Email.IsEmail())
-						throw new SmartException(T("Common.Error.InvalidEmail"));
-
-					billingAddress = (Address)customer.BillingAddress.Clone();
-				}
-				else
-				{
-					if (initialOrder.BillingAddress == null)
-						throw new SmartException(T("Order.BillingAddressMissing"));
-
-					billingAddress = (Address)initialOrder.BillingAddress.Clone();
-				}
-
-				if (billingAddress.Country != null && !billingAddress.Country.AllowsBilling)
-					throw new SmartException(T("Order.CountryNotAllowedForBilling", billingAddress.Country.Name));
+                var billingAddress = !processPaymentRequest.IsRecurringPayment
+                    ? (Address)customer.BillingAddress.Clone()
+                    : (Address)initialOrder.BillingAddress.Clone();
 
 				Address shippingAddress = null;
 				if (shoppingCartRequiresShipping)
 				{
-					if (!processPaymentRequest.IsRecurringPayment)
-					{
-						if (customer.ShippingAddress == null)
-							throw new SmartException(T("Order.ShippingAddressMissing"));
-
-						if (!customer.ShippingAddress.Email.IsEmail())
-							throw new SmartException(T("Common.Error.InvalidEmail"));
-
-						shippingAddress = (Address)customer.ShippingAddress.Clone();
-					}
-					else
-					{
-						if (initialOrder.ShippingAddress == null)
-							throw new SmartException(T("Order.ShippingAddressMissing"));
-
-						shippingAddress = (Address)initialOrder.ShippingAddress.Clone();
-					}
-
-					if (shippingAddress.Country != null && !shippingAddress.Country.AllowsShipping)
-						throw new SmartException(T("Order.CountryNotAllowedForShipping", shippingAddress.Country.Name));
+                    shippingAddress = !processPaymentRequest.IsRecurringPayment
+                        ? (Address)customer.ShippingAddress.Clone()
+                        : (Address)initialOrder.ShippingAddress.Clone();
 				}
 
 				#endregion
 
 				#region Payment workflow
 
-				// skip payment workflow if order total equals zero
-                var skipPaymentWorkflow = false;
-				if (orderTotal.Value == decimal.Zero)
-				{
-					skipPaymentWorkflow = true;
-				}
+				// Skip payment workflow if order total equals zero.
+                var skipPaymentWorkflow = cartTotal.TotalAmount.Value == decimal.Zero;
 
-                // payment workflow
+                // Payment workflow.
                 Provider<IPaymentMethod> paymentMethod = null;
 				if (!skipPaymentWorkflow)
 				{
 					paymentMethod = _paymentService.LoadPaymentMethodBySystemName(processPaymentRequest.PaymentMethodSystemName);
-					if (paymentMethod == null)
-						throw new SmartException(T("Payment.CouldNotLoadMethod"));
-
-					// ensure that payment method is active
-					if (!paymentMethod.IsPaymentMethodActive(_paymentSettings))
-						throw new SmartException(T("Payment.MethodNotAvailable"));
 				}
 				else
 				{
 					processPaymentRequest.PaymentMethodSystemName = "";
 				}
 
-                // recurring or standard shopping cart?
+                // Recurring or standard shopping cart?
                 var isRecurringShoppingCart = false;
 				if (!processPaymentRequest.IsRecurringPayment)
 				{
 					isRecurringShoppingCart = cart.IsRecurring();
 					if (isRecurringShoppingCart)
 					{
-						var recurringCycleLength = 0;
-						var recurringTotalCycles = 0;
-						RecurringProductCyclePeriod recurringCyclePeriod;
-						string recurringCyclesError = cart.GetRecurringCycleInfo(_localizationService, out recurringCycleLength, out recurringCyclePeriod, out recurringTotalCycles);
-
-						if (!string.IsNullOrEmpty(recurringCyclesError))
-							throw new SmartException(recurringCyclesError);
+						var unused = cart.GetRecurringCycleInfo(_localizationService, out var recurringCycleLength, out var recurringCyclePeriod, out var recurringTotalCycles);
 
 						processPaymentRequest.RecurringCycleLength = recurringCycleLength;
 						processPaymentRequest.RecurringCyclePeriod = recurringCyclePeriod;
@@ -905,7 +1014,7 @@ namespace SmartStore.Services.Orders
 					isRecurringShoppingCart = true;
 				}
 
-                // process payment
+                // Process payment.
                 ProcessPaymentResult processPaymentResult = null;
                 if (!skipPaymentWorkflow && !processPaymentRequest.IsMultiOrder)
                 {
@@ -913,7 +1022,7 @@ namespace SmartStore.Services.Orders
                     {
                         if (isRecurringShoppingCart)
                         {
-                            // recurring cart
+                            // Recurring cart.
                             var recurringPaymentType = _paymentService.GetRecurringPaymentType(processPaymentRequest.PaymentMethodSystemName);
                             switch (recurringPaymentType)
                             {
@@ -929,7 +1038,7 @@ namespace SmartStore.Services.Orders
                         }
                         else
                         {
-                            // standard cart
+                            // Standard cart.
                             processPaymentResult = _paymentService.ProcessPayment(processPaymentRequest);
                         }
                     }
@@ -937,11 +1046,11 @@ namespace SmartStore.Services.Orders
                     {
                         if (isRecurringShoppingCart)
                         {
-                            // Old credit card info
+                            // Old credit card info.
                             processPaymentRequest.CreditCardType = initialOrder.AllowStoringCreditCardNumber ? _encryptionService.DecryptText(initialOrder.CardType) : "";
                             processPaymentRequest.CreditCardName = initialOrder.AllowStoringCreditCardNumber ? _encryptionService.DecryptText(initialOrder.CardName) : "";
                             processPaymentRequest.CreditCardNumber = initialOrder.AllowStoringCreditCardNumber ? _encryptionService.DecryptText(initialOrder.CardNumber) : "";
-                            // MaskedCreditCardNumber 
+                            // MaskedCreditCardNumber.
                             processPaymentRequest.CreditCardCvv2 = initialOrder.AllowStoringCreditCardNumber ? _encryptionService.DecryptText(initialOrder.CardCvv2) : "";
 
                             try
@@ -960,7 +1069,7 @@ namespace SmartStore.Services.Orders
                                     processPaymentResult = _paymentService.ProcessRecurringPayment(processPaymentRequest);
                                     break;
                                 case RecurringPaymentType.Automatic:
-                                    //payment is processed on payment gateway site
+                                    // Payment is processed on payment gateway site.
                                     processPaymentResult = new ProcessPaymentResult();
                                     break;
                                 default:
@@ -975,20 +1084,19 @@ namespace SmartStore.Services.Orders
                 }
                 else
                 {
-					// payment is not required
-					if (processPaymentResult == null)
-					{
-						processPaymentResult = new ProcessPaymentResult();
-					}
-                    processPaymentResult.NewPaymentStatus = PaymentStatus.Paid;
+                    // Payment is not required.
+                    processPaymentResult = new ProcessPaymentResult
+                    {
+                        NewPaymentStatus = PaymentStatus.Paid
+                    };
                 }
 
                 #endregion
 
                 if (processPaymentResult.Success)
                 {
-                    //save order in data storage
-                    //uncomment this line to support transactions
+                    // Save order.
+                    // Uncomment this line to support transactions.
                     //using (var scope = new System.Transactions.TransactionScope())
                     {
                         #region Save order details
@@ -1019,9 +1127,11 @@ namespace SmartStore.Services.Orders
 							PaymentMethodAdditionalFeeTaxRate = paymentAdditionalFeeTaxRate,
                             TaxRates = taxRates,
                             OrderTax = orderTaxTotal,
-                            OrderTotal = orderTotal.Value,
+                            OrderTotalRounding = cartTotal.RoundingAmount,
+                            OrderTotal = cartTotal.TotalAmount.Value,
                             RefundedAmount = decimal.Zero,
-                            OrderDiscount = orderDiscountAmount,
+                            OrderDiscount = cartTotal.DiscountAmount,
+							CreditBalance = cartTotal.CreditBalance,
                             CheckoutAttributeDescription = checkoutAttributeDescription,
                             CheckoutAttributesXml = checkoutAttributesXml,
                             CustomerCurrencyCode = customerCurrencyCode,
@@ -1074,12 +1184,12 @@ namespace SmartStore.Services.Orders
 
                         if (!processPaymentRequest.IsRecurringPayment)
                         {
-                            //move shopping cart items to order products
+                            // Move shopping cart items to order products.
                             foreach (var sc in cart)
                             {
 								sc.Item.Product.MergeWithCombination(sc.Item.AttributesXml);
 
-                                //prices
+                                // Prices.
                                 decimal taxRate = decimal.Zero;
 								decimal unitPriceTaxRate = decimal.Zero;
                                 decimal scUnitPrice = _priceCalculationService.GetUnitPrice(sc, true);
@@ -1089,7 +1199,7 @@ namespace SmartStore.Services.Orders
                                 decimal scSubTotalInclTax = _taxService.GetProductPrice(sc.Item.Product, scSubTotal, true, customer, out taxRate);
                                 decimal scSubTotalExclTax = _taxService.GetProductPrice(sc.Item.Product, scSubTotal, false, customer, out taxRate);
 
-                                //discounts
+                                // Discounts.
                                 Discount scDiscount = null;
                                 decimal discountAmount = _priceCalculationService.GetDiscountAmount(sc, out scDiscount);
                                 decimal discountAmountInclTax = _taxService.GetProductPrice(sc.Item.Product, discountAmount, true, customer, out taxRate);
@@ -1100,12 +1210,15 @@ namespace SmartStore.Services.Orders
 									appliedDiscounts.Add(scDiscount);
 								}
 
-                                //attributes
                                 var attributeDescription = _productAttributeFormatter.FormatAttributes(sc.Item.Product, sc.Item.AttributesXml, customer);
-
                                 var itemWeight = _shippingService.GetShoppingCartItemWeight(sc);
+                                var displayDeliveryTime = 
+                                    _shoppingCartSettings.ShowDeliveryTimes &&
+                                    sc.Item.Product.DeliveryTimeId.HasValue &&
+                                    sc.Item.Product.IsShipEnabled &&
+                                    sc.Item.Product.DisplayDeliveryTimeAccordingToStock(_catalogSettings);
 
-                                //save order item
+                                // Save order item.
                                 var orderItem = new OrderItem
                                 {
                                     OrderItemGuid = Guid.NewGuid(),
@@ -1125,10 +1238,12 @@ namespace SmartStore.Services.Orders
                                     IsDownloadActivated = false,
                                     LicenseDownloadId = 0,
                                     ItemWeight = itemWeight,
-									ProductCost = _priceCalculationService.GetProductCost(sc.Item.Product, sc.Item.AttributesXml)
+									ProductCost = _priceCalculationService.GetProductCost(sc.Item.Product, sc.Item.AttributesXml),
+                                    DeliveryTimeId = sc.Item.Product.GetDeliveryTimeIdAccordingToStock(_catalogSettings),
+                                    DisplayDeliveryTime = displayDeliveryTime
                                 };
 
-								if (sc.Item.Product.ProductType == ProductType.BundledProduct && sc.ChildItems != null)
+                                if (sc.Item.Product.ProductType == ProductType.BundledProduct && sc.ChildItems != null)
 								{
 									var listBundleData = new List<ProductBundleItemOrderData>();
 
@@ -1148,13 +1263,16 @@ namespace SmartStore.Services.Orders
                                 order.OrderItems.Add(orderItem);
                                 _orderService.UpdateOrder(order);
 
-                                //gift cards
+                                // Gift cards.
                                 if (sc.Item.Product.IsGiftCard)
                                 {
-                                    string giftCardRecipientName, giftCardRecipientEmail, giftCardSenderName, giftCardSenderEmail, giftCardMessage;
-
-                                    _productAttributeParser.GetGiftCardAttribute(sc.Item.AttributesXml,
-                                        out giftCardRecipientName, out giftCardRecipientEmail, out giftCardSenderName, out giftCardSenderEmail, out giftCardMessage);
+                                    _productAttributeParser.GetGiftCardAttribute(
+										sc.Item.AttributesXml,
+                                        out var giftCardRecipientName,
+										out var giftCardRecipientEmail, 
+										out var giftCardSenderName, 
+										out var giftCardSenderEmail, 
+										out var giftCardMessage);
 
                                     for (int i = 0; i < sc.Item.Quantity; i++)
                                     {
@@ -1180,7 +1298,7 @@ namespace SmartStore.Services.Orders
 								_productService.AdjustInventory(sc, true);
                             }
 
-							//clear shopping cart
+							// Clear shopping cart.
 							if (!processPaymentRequest.IsMultiOrder)
 							{
 								cart.ToList().ForEach(sci => _shoppingCartService.DeleteShoppingCartItem(sci.Item, false));
@@ -1188,11 +1306,11 @@ namespace SmartStore.Services.Orders
                         }
                         else
                         {
-                            //recurring payment
+                            // Recurring payment.
                             var initialOrderItems = initialOrder.OrderItems;
                             foreach (var orderItem in initialOrderItems)
                             {
-                                //save item
+                                // Save item.
                                 var newOrderItem = new OrderItem
                                 {
                                     OrderItemGuid = Guid.NewGuid(),
@@ -1213,18 +1331,23 @@ namespace SmartStore.Services.Orders
                                     LicenseDownloadId = 0,
                                     ItemWeight = orderItem.ItemWeight,
 									BundleData = orderItem.BundleData,
-									ProductCost = orderItem.ProductCost
+									ProductCost = orderItem.ProductCost,
+                                    DeliveryTimeId = orderItem.DeliveryTimeId,
+                                    DisplayDeliveryTime = orderItem.DisplayDeliveryTime
                                 };
                                 order.OrderItems.Add(newOrderItem);
                                 _orderService.UpdateOrder(order);
 
-                                //gift cards
+                                // Gift cards.
                                 if (orderItem.Product.IsGiftCard)
                                 {
-                                    string giftCardRecipientName, giftCardRecipientEmail, giftCardSenderName, giftCardSenderEmail, giftCardMessage;
-
-                                    _productAttributeParser.GetGiftCardAttribute(orderItem.AttributesXml,
-                                        out giftCardRecipientName, out giftCardRecipientEmail, out giftCardSenderName, out giftCardSenderEmail, out giftCardMessage);
+                                    _productAttributeParser.GetGiftCardAttribute(
+										orderItem.AttributesXml,
+										out var giftCardRecipientName,
+										out var giftCardRecipientEmail,
+										out var giftCardSenderName,
+										out var giftCardSenderEmail,
+										out var giftCardMessage);
 
                                     for (int i = 0; i < orderItem.Quantity; i++)
                                     {
@@ -1251,7 +1374,7 @@ namespace SmartStore.Services.Orders
                             }
                         }
 
-                        //discount usage history
+                        // Discount usage history.
 						if (!processPaymentRequest.IsRecurringPayment)
 						{
 							foreach (var discount in appliedDiscounts)
@@ -1266,10 +1389,10 @@ namespace SmartStore.Services.Orders
 							}
 						}
 
-                        //gift card usage history
-						if (!processPaymentRequest.IsRecurringPayment && appliedGiftCards != null)
+                        // Gift card usage history.
+						if (!processPaymentRequest.IsRecurringPayment && cartTotal.AppliedGiftCards != null)
 						{
-							foreach (var agc in appliedGiftCards)
+							foreach (var agc in cartTotal.AppliedGiftCards)
 							{
 								var amountUsed = agc.AmountCanBeUsed;
 								var gcuh = new GiftCardUsageHistory
@@ -1284,21 +1407,21 @@ namespace SmartStore.Services.Orders
 							}
 						}
 
-                        //reward points history
-                        if (redeemedRewardPointsAmount > decimal.Zero)
+                        // Reward points history.
+                        if (cartTotal.RedeemedRewardPointsAmount > decimal.Zero)
                         {
-                            customer.AddRewardPointsHistoryEntry(-redeemedRewardPoints,
+                            customer.AddRewardPointsHistoryEntry(-cartTotal.RedeemedRewardPoints,
 								_localizationService.GetResource("RewardPoints.Message.RedeemedForOrder", order.CustomerLanguageId).FormatInvariant(order.GetOrderNumber()),
                                 order,
-								redeemedRewardPointsAmount);
+                                cartTotal.RedeemedRewardPointsAmount);
 
                             _customerService.UpdateCustomer(customer);
                         }
 
-                        //recurring orders
+                        // Recurring orders.
                         if (!processPaymentRequest.IsRecurringPayment && isRecurringShoppingCart)
                         {
-                            //create recurring payment (the first payment)
+                            // Create recurring payment (the first payment).
                             var rp = new RecurringPayment
                             {
                                 CycleLength = processPaymentRequest.RecurringCycleLength,
@@ -1315,26 +1438,22 @@ namespace SmartStore.Services.Orders
                             switch (recurringPaymentType)
                             {
                                 case RecurringPaymentType.NotSupported:
-                                    {
-                                        //not supported
-                                    }
                                     break;
                                 case RecurringPaymentType.Manual:
                                     {
-                                        //first payment
-                                        var rph = new RecurringPaymentHistory()
+                                        // First payment.
+                                        rp.RecurringPaymentHistory.Add(new RecurringPaymentHistory
                                         {
                                             RecurringPayment = rp,
-											CreatedOnUtc = utcNow,
-                                            OrderId = order.Id,
-                                        };
-                                        rp.RecurringPaymentHistory.Add(rph);
+                                            CreatedOnUtc = utcNow,
+                                            OrderId = order.Id
+                                        });
                                         _orderService.UpdateRecurringPayment(rp);
                                     }
                                     break;
                                 case RecurringPaymentType.Automatic:
                                     {
-                                        //will be created later (process is automated)
+                                        // Will be created later (process is automated).
                                     }
                                     break;
                                 default:
@@ -1346,41 +1465,41 @@ namespace SmartStore.Services.Orders
 
 						#region Notifications, notes and attributes
 
-						// notes, messages
+						// Notes, messages.
 						_orderService.AddOrderNote(order, T("Admin.OrderNotice.OrderPlaced"));
-
-                        //send email notifications
-                        int orderPlacedStoreOwnerNotificationQueuedEmailId = _workflowMessageService.SendOrderPlacedStoreOwnerNotification(order, _localizationSettings.DefaultAdminLanguageId);
-                        if (orderPlacedStoreOwnerNotificationQueuedEmailId > 0)
+						
+                        // Send email notifications.
+                        var msg = _messageFactory.SendOrderPlacedStoreOwnerNotification(order, _localizationSettings.DefaultAdminLanguageId);
+                        if (msg?.Email?.Id != null)
                         {
-							_orderService.AddOrderNote(order, T("Admin.OrderNotice.MerchantEmailQueued", orderPlacedStoreOwnerNotificationQueuedEmailId));
+							_orderService.AddOrderNote(order, T("Admin.OrderNotice.MerchantEmailQueued", msg.Email.Id));
                         }
 
-                        int orderPlacedCustomerNotificationQueuedEmailId = _workflowMessageService.SendOrderPlacedCustomerNotification(order, order.CustomerLanguageId);
-                        if (orderPlacedCustomerNotificationQueuedEmailId > 0)
+						msg = _messageFactory.SendOrderPlacedCustomerNotification(order, order.CustomerLanguageId);
+                        if (msg?.Email?.Id != null)
                         {
-							_orderService.AddOrderNote(order, T("Admin.OrderNotice.CustomerEmailQueued", orderPlacedCustomerNotificationQueuedEmailId));
+							_orderService.AddOrderNote(order, T("Admin.OrderNotice.CustomerEmailQueued", msg.Email.Id));
                         }
 
-                        // check order status
+                        // Check order status.
                         CheckOrderStatus(order);
 
-						//reset checkout data
+						// Reset checkout data.
                         if (!processPaymentRequest.IsRecurringPayment && !processPaymentRequest.IsMultiOrder)
 						{
-							_customerService.ResetCheckoutData(customer, processPaymentRequest.StoreId, clearCouponCodes: true, clearCheckoutAttributes: true);
+							_customerService.ResetCheckoutData(customer, processPaymentRequest.StoreId, true, true, true, clearCreditBalance: true);
 						}
 
-						// check for generic attributes to be inserted automatically
+						// Check for generic attributes to be inserted automatically.
 						foreach (var customProperty in processPaymentRequest.CustomProperties.Where(x => x.Key.HasValue() && x.Value.AutoCreateGenericAttribute))
 						{
 							_genericAttributeService.SaveAttribute<object>(order, customProperty.Key, customProperty.Value.Value, order.StoreId);
 						}
 
-                        //uncomment this line to support transactions
+                        // Uncomment this line to support transactions.
                         //scope.Complete();
 
-                        // raise event       
+                        // Publish events.
                         _eventPublisher.PublishOrderPlaced(order);
 
                         if (!processPaymentRequest.IsRecurringPayment)
@@ -1388,7 +1507,6 @@ namespace SmartStore.Services.Orders
                             _customerActivityService.InsertActivity("PublicStore.PlaceOrder", T("ActivityLog.PublicStore.PlaceOrder", order.GetOrderNumber()));
                         }
 						
-                        //raise event         
                         if (order.PaymentStatus == PaymentStatus.Paid)
                         {
                             _eventPublisher.PublishOrderPaid(order);
@@ -1406,10 +1524,7 @@ namespace SmartStore.Services.Orders
 
 							if (nsResult.HasValue)
 							{
-								if (nsResult.Value)
-									_orderService.AddOrderNote(order, T("Admin.OrderNotice.NewsLetterSubscriptionAdded"));
-								else
-									_orderService.AddOrderNote(order, T("Admin.OrderNotice.NewsLetterSubscriptionRemoved"));
+                                _orderService.AddOrderNote(order, T(nsResult.Value ? "Admin.OrderNotice.NewsLetterSubscriptionAdded" : "Admin.OrderNotice.NewsLetterSubscriptionRemoved"));
 							}
 						}
 
@@ -1428,13 +1543,13 @@ namespace SmartStore.Services.Orders
             }
             catch (Exception ex)
             {
-                _logger.Error(ex);
+				Logger.Error(ex);
                 result.AddError(ex.Message);
             }
 
-			if (result.Errors.Count > 0)
+			if (result.Errors.Any())
 			{
-				_logger.Error(string.Join(" ", result.Errors));
+				Logger.Error(string.Join(" ", result.Errors));
 			}
 
             return result;
@@ -1446,30 +1561,28 @@ namespace SmartStore.Services.Orders
         /// <param name="order">The order</param>
         public virtual void DeleteOrder(Order order)
         {
-            if (order == null)
-                throw new ArgumentNullException("order");
+            Guard.NotNull(order, nameof(order));
 
-            //reward points
-            ReduceRewardPoints(order);
-
-            //cancel recurring payments
-            var recurringPayments = _orderService.SearchRecurringPayments(0, 0, order.Id, null);
-            foreach (var rp in recurringPayments)
+            if (order.OrderStatus != OrderStatus.Cancelled)
             {
-                //use errors?
-                var errors = CancelRecurringPayment(rp);
+                ReduceRewardPoints(order);
+
+                // Cancel recurring payments.
+                var recurringPayments = _orderService.SearchRecurringPayments(0, 0, order.Id, null);
+                foreach (var rp in recurringPayments)
+                {
+                    CancelRecurringPayment(rp);
+                }
+
+                // Adjust inventory.
+                foreach (var orderItem in order.OrderItems)
+                {
+                    _productService.AdjustInventory(orderItem, false, orderItem.Quantity);
+                }
             }
 
-            //Adjust inventory
-			foreach (var orderItem in order.OrderItems)
-			{
-				_productService.AdjustInventory(orderItem, false, orderItem.Quantity);
-			}
+            _orderService.AddOrderNote(order, T("Admin.OrderNotice.OrderDeleted"));
 
-			//add a note
-			_orderService.AddOrderNote(order, T("Admin.OrderNotice.OrderDeleted"));
-            
-            //now delete an order
             _orderService.DeleteOrder(order);
         }
 
@@ -1537,7 +1650,7 @@ namespace SmartStore.Services.Orders
             }
             catch (Exception exception)
             {
-				_logger.ErrorsAll(exception);
+				Logger.ErrorsAll(exception);
                 throw;
             }
         }
@@ -1573,7 +1686,7 @@ namespace SmartStore.Services.Orders
 					_orderService.AddOrderNote(initialOrder, T("Admin.OrderNotice.RecurringPaymentCancelled"));
 
                     //notify a store owner
-                    _workflowMessageService.SendRecurringPaymentCancelledStoreOwnerNotification(recurringPayment, _localizationSettings.DefaultAdminLanguageId);
+                    _messageFactory.SendRecurringPaymentCancelledStoreOwnerNotification(recurringPayment, _localizationSettings.DefaultAdminLanguageId);
                 }
             }
             catch (Exception exception)
@@ -1663,10 +1776,10 @@ namespace SmartStore.Services.Orders
             if (notifyCustomer)
             {
                 //notify customer
-                int queuedEmailId = _workflowMessageService.SendShipmentSentCustomerNotification(shipment, order.CustomerLanguageId);
-                if (queuedEmailId > 0)
+                var msg = _messageFactory.SendShipmentSentCustomerNotification(shipment, order.CustomerLanguageId);
+                if (msg?.Email?.Id != null)
                 {
-					_orderService.AddOrderNote(order, T("Admin.OrderNotice.CustomerShippedEmailQueued", queuedEmailId));
+					_orderService.AddOrderNote(order, T("Admin.OrderNotice.CustomerShippedEmailQueued", msg.Email.Id));
                 }
             }
 
@@ -1706,10 +1819,10 @@ namespace SmartStore.Services.Orders
             if (notifyCustomer)
             {
                 //send email notification
-                int queuedEmailId = _workflowMessageService.SendShipmentDeliveredCustomerNotification(shipment, order.CustomerLanguageId);
-                if (queuedEmailId > 0)
+                var msg = _messageFactory.SendShipmentDeliveredCustomerNotification(shipment, order.CustomerLanguageId);
+                if (msg?.Email?.Id != null)
                 {
-					_orderService.AddOrderNote(order, T("Admin.OrderNotice.CustomerDeliveredEmailQueued", queuedEmailId));
+					_orderService.AddOrderNote(order, T("Admin.OrderNotice.CustomerDeliveredEmailQueued", msg.Email.Id));
                 }
             }
 
@@ -1742,26 +1855,26 @@ namespace SmartStore.Services.Orders
         /// <param name="notifyCustomer">True to notify customer</param>
         public virtual void CancelOrder(Order order, bool notifyCustomer)
         {
-            if (order == null)
-                throw new ArgumentNullException("order");
+            Guard.NotNull(order, nameof(order));
 
             if (!CanCancelOrder(order))
+            {
                 throw new SmartException(T("Order.CannotCancel"));
+            }
 
-            //Cancel order
+            // Cancel order.
             SetOrderStatus(order, OrderStatus.Cancelled, notifyCustomer);
 
 			_orderService.AddOrderNote(order, T("Admin.OrderNotice.OrderCancelled"));
 
-            //cancel recurring payments
+            // Cancel recurring payments.
             var recurringPayments = _orderService.SearchRecurringPayments(0, 0, order.Id, null);
             foreach (var rp in recurringPayments)
             {
-                //use errors?
-                var errors = CancelRecurringPayment(rp);
+                CancelRecurringPayment(rp);
             }
 
-            //Adjust inventory
+            // Adjust inventory.
 			foreach (var orderItem in order.OrderItems)
 			{
 				_productService.AdjustInventory(orderItem, false, orderItem.Quantity);
@@ -1780,21 +1893,23 @@ namespace SmartStore.Services.Orders
 
 			if (context.UpdateTotals && oi.Order.OrderStatusId <= (int)OrderStatus.Pending)
 			{
-				decimal priceInclTax = Round(context.QuantityNew * oi.UnitPriceInclTax);
-				decimal priceExclTax = Round(context.QuantityNew * oi.UnitPriceExclTax);
+				var currency = _currencyService.GetCurrencyByCode(oi.Order.CustomerCurrencyCode);
+
+				decimal priceInclTax = (context.QuantityNew * oi.UnitPriceInclTax).RoundIfEnabledFor(currency);
+				decimal priceExclTax = (context.QuantityNew * oi.UnitPriceExclTax).RoundIfEnabledFor(currency);
 
 				decimal deltaPriceInclTax = priceInclTax - (context.IsNewOrderItem ? decimal.Zero : oi.PriceInclTax);
 				decimal deltaPriceExclTax = priceExclTax - (context.IsNewOrderItem ? decimal.Zero : oi.PriceExclTax);
 
 				oi.Quantity = context.QuantityNew;
-				oi.PriceInclTax = Round(priceInclTax);
-				oi.PriceExclTax = Round(priceExclTax);
+				oi.PriceInclTax = priceInclTax.RoundIfEnabledFor(currency);
+				oi.PriceExclTax = priceExclTax.RoundIfEnabledFor(currency);
 
 				decimal subtotalInclTax = oi.Order.OrderSubtotalInclTax + deltaPriceInclTax;
 				decimal subtotalExclTax = oi.Order.OrderSubtotalExclTax + deltaPriceExclTax;
 
-				oi.Order.OrderSubtotalInclTax = Round(subtotalInclTax);
-				oi.Order.OrderSubtotalExclTax = Round(subtotalExclTax);
+				oi.Order.OrderSubtotalInclTax = subtotalInclTax.RoundIfEnabledFor(currency);
+				oi.Order.OrderSubtotalExclTax = subtotalExclTax.RoundIfEnabledFor(currency);
 
 				decimal discountInclTax = oi.DiscountAmountInclTax * context.QuantityChangeFactor;
 				decimal discountExclTax = oi.DiscountAmountExclTax * context.QuantityChangeFactor;
@@ -1802,14 +1917,27 @@ namespace SmartStore.Services.Orders
 				decimal deltaDiscountInclTax = discountInclTax - oi.DiscountAmountInclTax;
 				decimal deltaDiscountExclTax = discountExclTax - oi.DiscountAmountExclTax;
 
-				oi.DiscountAmountInclTax = Round(discountInclTax);
-				oi.DiscountAmountExclTax = Round(discountExclTax);
+				oi.DiscountAmountInclTax = discountInclTax.RoundIfEnabledFor(currency);
+				oi.DiscountAmountExclTax = discountExclTax.RoundIfEnabledFor(currency);
 
 				decimal total = Math.Max(oi.Order.OrderTotal + deltaPriceInclTax, 0);
 				decimal tax = Math.Max(oi.Order.OrderTax + (deltaPriceInclTax - deltaPriceExclTax), 0);
 
-				oi.Order.OrderTotal = Round(total);
-				oi.Order.OrderTax = Round(tax);
+				oi.Order.OrderTotal = total.RoundIfEnabledFor(currency);
+				oi.Order.OrderTax = tax.RoundIfEnabledFor(currency);
+
+				// Update tax rate value.
+				var deltaTax = deltaPriceInclTax - deltaPriceExclTax;
+				if (deltaTax != decimal.Zero)
+				{
+					var taxRates = oi.Order.TaxRatesDictionary;
+
+					taxRates[oi.TaxRate] = taxRates.ContainsKey(oi.TaxRate)
+						? Math.Max(taxRates[oi.TaxRate] + deltaTax, 0)
+						: Math.Max(deltaTax, 0);
+
+					oi.Order.TaxRates = FormatTaxRates(taxRates);
+				}
 
 				_orderService.UpdateOrder(oi.Order);
 			}
@@ -2052,12 +2180,15 @@ namespace SmartStore.Services.Orders
             if (order.OrderTotal == decimal.Zero)
                 return false;
 
-            //uncomment the lines below in order to allow this operation for cancelled orders
-            //if (order.OrderStatus == OrderStatus.Cancelled)
-            //    return false;
+			// Only partial refunds allowed if already refunded.
+			if (order.RefundedAmount > decimal.Zero)
+				return false;
 
-            if (order.PaymentStatus == PaymentStatus.Paid &&
-                _paymentService.SupportRefund(order.PaymentMethodSystemName))
+			// Uncomment the lines below in order to allow this operation for cancelled orders.
+			//if (order.OrderStatus == OrderStatus.Cancelled)
+			//    return false;
+
+			if (order.PaymentStatus == PaymentStatus.Paid && _paymentService.SupportRefund(order.PaymentMethodSystemName))
                 return true;
 
             return false;
@@ -2088,10 +2219,10 @@ namespace SmartStore.Services.Orders
 
                 if (result.Success)
                 {
-                    //total amount refunded
+                    // Total amount refunded.
                     decimal totalAmountRefunded = order.RefundedAmount + request.AmountToRefund;
 
-                    //update order info
+                    // Update order info.
                     order.RefundedAmount = totalAmountRefunded;
                     order.PaymentStatus = result.NewPaymentStatus;
 
@@ -2099,7 +2230,6 @@ namespace SmartStore.Services.Orders
 
 					_orderService.AddOrderNote(order, T("Admin.OrderNotice.OrderRefunded", _priceFormatter.FormatPrice(request.AmountToRefund, true, false)));
 
-                    //check order status
                     CheckOrderStatus(order);
                 }
 
@@ -2132,11 +2262,15 @@ namespace SmartStore.Services.Orders
             if (order.OrderTotal == decimal.Zero)
                 return false;
 
-            //uncomment the lines below in order to allow this operation for cancelled orders
-            //if (order.OrderStatus == OrderStatus.Cancelled)
-            //     return false;
+			// Only partial refunds allowed if already refunded.
+			if (order.RefundedAmount > decimal.Zero)
+				return false;
 
-            if (order.PaymentStatus == PaymentStatus.Paid)
+			// Uncomment the lines below in order to allow this operation for cancelled orders.
+			//if (order.OrderStatus == OrderStatus.Cancelled)
+			//     return false;
+
+			if (order.PaymentStatus == PaymentStatus.Paid)
                 return true;
 
             return false;
@@ -2154,13 +2288,13 @@ namespace SmartStore.Services.Orders
             if (!CanRefundOffline(order))
                 throw new SmartException(T("Order.CannotRefund"));
 
-            //amout to refund
+            // Amout to refund.
             decimal amountToRefund = order.OrderTotal;
 
-            //total amount refunded
+            // Total amount refunded.
             decimal totalAmountRefunded = order.RefundedAmount + amountToRefund;
 
-            //update order info
+            // Update order info.
             order.RefundedAmount = totalAmountRefunded;
             order.PaymentStatus = PaymentStatus.Refunded;
 
@@ -2168,7 +2302,6 @@ namespace SmartStore.Services.Orders
 
 			_orderService.AddOrderNote(order, T("Admin.OrderNotice.OrderMarkedAsRefunded", _priceFormatter.FormatPrice(amountToRefund, true, false)));
 
-            //check order status
             CheckOrderStatus(order);
         }
 
@@ -2506,6 +2639,7 @@ namespace SmartStore.Services.Orders
                 var daysPassed = (DateTime.UtcNow - order.CreatedOnUtc).TotalDays;
                 numberOfDaysReturnRequestAvailableValid = (daysPassed - _orderSettings.NumberOfDaysReturnRequestAvailable) < 0;
             }
+
             return numberOfDaysReturnRequestAvailableValid;
         }
 

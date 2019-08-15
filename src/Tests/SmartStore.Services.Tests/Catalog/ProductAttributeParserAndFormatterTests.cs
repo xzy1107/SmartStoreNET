@@ -1,5 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using NUnit.Framework;
+using Rhino.Mocks;
 using SmartStore.Core;
 using SmartStore.Core.Caching;
 using SmartStore.Core.Data;
@@ -7,20 +9,17 @@ using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Localization;
 using SmartStore.Core.Domain.Orders;
+using SmartStore.Core.Events;
 using SmartStore.Services.Catalog;
 using SmartStore.Services.Directory;
-using SmartStore.Core.Events;
 using SmartStore.Services.Localization;
 using SmartStore.Services.Media;
 using SmartStore.Services.Tax;
 using SmartStore.Tests;
-using NUnit.Framework;
-using Rhino.Mocks;
-using System;
 
 namespace SmartStore.Services.Tests.Catalog
 {
-    [TestFixture]
+	[TestFixture]
     public class ProductAttributeParserTests : ServiceTest
     {
         IRepository<ProductAttribute> _productAttributeRepo;
@@ -30,7 +29,7 @@ namespace SmartStore.Services.Tests.Catalog
         IRepository<ProductVariantAttributeCombination> _productVariantAttributeCombinationRepo;
         IRepository<ProductVariantAttributeValue> _productVariantAttributeValueRepo;
 		IRepository<ProductBundleItemAttributeFilter> _productBundleItemAttributeFilter;
-		IRepository<LocalizedProperty> _localizedPropertyRepository;
+		ILocalizedEntityService _localizedEntityService;
 		IProductAttributeService _productAttributeService;
         IProductAttributeParser _productAttributeParser;
 		IPriceCalculationService _priceCalculationService;
@@ -46,8 +45,9 @@ namespace SmartStore.Services.Tests.Catalog
         IWebHelper _webHelper;
         IProductAttributeFormatter _productAttributeFormatter;
 		ShoppingCartSettings _shoppingCartSettings;
+		CatalogSettings _catalogSettings;
 
-        ProductAttribute pa1, pa2, pa3;
+		ProductAttribute pa1, pa2, pa3;
         ProductVariantAttribute pva1_1, pva2_1, pva3_1;
         ProductVariantAttributeValue pvav1_1, pvav1_2, pvav2_1, pvav2_2;
 
@@ -175,7 +175,7 @@ namespace SmartStore.Services.Tests.Catalog
             _productVariantAttributeValueRepo.Expect(x => x.GetById(pvav2_2.Id)).Return(pvav2_2);
 
 			_productBundleItemAttributeFilter = MockRepository.GenerateMock<IRepository<ProductBundleItemAttributeFilter>>();
-			_localizedPropertyRepository = MockRepository.GenerateMock<IRepository<LocalizedProperty>>();
+			_localizedEntityService = MockRepository.GenerateMock<ILocalizedEntityService>();
 
             _eventPublisher = MockRepository.GenerateMock<IEventPublisher>();
             _eventPublisher.Expect(x => x.Publish(Arg<object>.Is.Anything));
@@ -193,7 +193,7 @@ namespace SmartStore.Services.Tests.Catalog
                 _productVariantAttributeCombinationRepo,
                 _productVariantAttributeValueRepo,
 				_productBundleItemAttributeFilter,
-				_localizedPropertyRepository,
+				_localizedEntityService,
                 _eventPublisher,
                 _pictureService);
 			
@@ -216,8 +216,9 @@ namespace SmartStore.Services.Tests.Catalog
             _webHelper = MockRepository.GenerateMock<IWebHelper>();
 			_priceCalculationService = MockRepository.GenerateMock<IPriceCalculationService>();
 			_shoppingCartSettings = MockRepository.GenerateMock<ShoppingCartSettings>();
+			_catalogSettings = MockRepository.GenerateMock<CatalogSettings>();
 
-            _productAttributeFormatter = new ProductAttributeFormatter(_workContext,
+			_productAttributeFormatter = new ProductAttributeFormatter(_workContext,
                 _productAttributeService,
                 _productAttributeParser,
 				_priceCalculationService,
@@ -227,7 +228,8 @@ namespace SmartStore.Services.Tests.Catalog
                 _priceFormatter,
                 _downloadService,
                 _webHelper,
-				_shoppingCartSettings);
+				_shoppingCartSettings,
+				_catalogSettings);
         }
 
         //[Test]

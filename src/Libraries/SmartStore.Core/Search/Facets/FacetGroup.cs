@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 
 namespace SmartStore.Core.Search.Facets
 {
@@ -12,9 +13,13 @@ namespace SmartStore.Core.Search.Facets
 		Price,
 		Rating,
 		DeliveryTime,
-		Stock,
+		Availability,
+		NewArrivals,
 		Attribute,
-		Variant
+		Variant,
+        Forum,
+        Customer,
+        Date
 	}
 
 	[DebuggerDisplay("Key: {Key}, Label: {Label}, Kind: {Kind}")]
@@ -23,20 +28,30 @@ namespace SmartStore.Core.Search.Facets
 		private readonly Dictionary<string, Facet> _facets;
 		private FacetGroupKind? _kind;
 
+		public FacetGroup()
+			: this (string.Empty, string.Empty, string.Empty, false, false, 0, Enumerable.Empty<Facet>())
+		{
+		}
+
 		public FacetGroup(
+            string scope,
 			string key,
 			string label,
 			bool isMultiSelect,
+			bool hasChildren,
 			int displayOrder,
 			IEnumerable<Facet> facets)
 		{
-			Guard.NotNull(key, nameof(key));
+            Guard.NotNull(scope, nameof(scope));
+            Guard.NotNull(key, nameof(key));
 			Guard.NotNull(facets, nameof(facets));
 
+            Scope = scope;
 			Key = key;
 			Label = label;
 			IsMultiSelect = isMultiSelect;
 			DisplayOrder = displayOrder;
+            IsScrollable = true;
 
 			_facets = new Dictionary<string, Facet>(StringComparer.OrdinalIgnoreCase);
 
@@ -49,14 +64,57 @@ namespace SmartStore.Core.Search.Facets
 				{
 					_facets.Add(x.Key, x);
 				}
-				catch (Exception exception)
+				catch (Exception ex)
 				{
-					exception.Dump();
+					ex.Dump();
 				}
 			});
 		}
 
-		public string Key
+		public static FacetGroupKind GetKindByKey(string scope, string key)
+		{
+			if (key.StartsWith("attrid"))
+			{
+				return FacetGroupKind.Attribute;
+			}
+			else if (key.StartsWith("variantid"))
+			{
+				return FacetGroupKind.Variant;
+			}
+
+            switch (key)
+            {
+                case "categoryid":
+                case "notfeaturedcategoryid":
+                    return FacetGroupKind.Category;
+                case "manufacturerid":
+                    return FacetGroupKind.Brand;
+                case "price":
+                    return FacetGroupKind.Price;
+                case "rating":
+                    return FacetGroupKind.Rating;
+                case "deliveryid":
+                    return FacetGroupKind.DeliveryTime;
+                case "available":
+                    return FacetGroupKind.Availability;
+                case "createdon":
+                    return scope == "Catalog" ? FacetGroupKind.NewArrivals : FacetGroupKind.Date;
+                case "forumid":
+                    return FacetGroupKind.Forum;
+                case "customerid":
+                    return FacetGroupKind.Customer;
+                default:
+                    return FacetGroupKind.Unknown;
+            }            
+        }
+
+        public string Scope
+        {
+            get;
+            private set;
+        }
+
+        public string Key
 		{
 			get;
 			private set;
@@ -74,17 +132,40 @@ namespace SmartStore.Core.Search.Facets
 			private set;
 		}
 
+        public bool HasChildren
+		{
+			get;
+			private set;
+		}
+
 		public int DisplayOrder
 		{
 			get;
 			private set;
 		}
 
-		public IEnumerable<Facet> Facets
+        public bool IsScrollable
+        {
+            get;
+            set;
+        }
+
+        public IEnumerable<Facet> Facets
 		{
 			get
 			{
 				return _facets.Values;
+			}
+		}
+
+		public IEnumerable<Facet> SelectedFacets
+		{
+			get
+			{
+				var parents = _facets.Values.Where(x => x.Value.IsSelected);
+				var children = _facets.Values.SelectMany(x => x.Children).Where(x => x.Value.IsSelected);
+
+				return parents.Concat(children);
 			}
 		}
 
@@ -101,42 +182,17 @@ namespace SmartStore.Core.Search.Facets
 			{
 				if (_kind == null)
 				{
-					if (Key.StartsWith("attrid"))
-					{
-						_kind = FacetGroupKind.Attribute;
-					}
-					else if (Key.StartsWith("variantid"))
-					{
-						_kind = FacetGroupKind.Variant;
-					}
-					else if (Key == "categoryid" || Key == "notfeaturedcategoryid")
-					{
-						_kind = FacetGroupKind.Category;
-					}
-					else if (Key == "manufacturerid")
-					{
-						_kind = FacetGroupKind.Brand;
-					}
-					else if (Key == "price")
-					{
-						_kind = FacetGroupKind.Price;
-					}
-					else if (Key == "rating")
-					{
-						_kind = FacetGroupKind.Rating;
-					}
-					else if (Key == "deliveryid")
-					{
-						_kind = FacetGroupKind.DeliveryTime;
-					}
-					else
-					{
-						_kind = FacetGroupKind.Unknown;
-					}
+					_kind = GetKindByKey(Scope, Key);
 				}
 
 				return _kind.Value;
 			}
+		}
+
+		public FacetTemplateHint TemplateHint
+		{
+			get;
+			set;
 		}
 	}
 }

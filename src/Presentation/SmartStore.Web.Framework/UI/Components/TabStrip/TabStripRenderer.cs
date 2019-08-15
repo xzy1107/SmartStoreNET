@@ -5,11 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Web.UI;
 using System.Web.Mvc;
-using System.Web.Mvc.Html;
-using System.Web.Routing;
 using SmartStore.Web.Framework.Modelling;
-using SmartStore.Core.Infrastructure;
-using SmartStore.Web.Framework.Theming;
 
 namespace SmartStore.Web.Framework.UI
 { 
@@ -28,6 +24,7 @@ namespace SmartStore.Web.Framework.UI
 
             var hasContent = tab.Items.Any(x => x.Content != null || x.Ajax);
 			var isTabbable = tab.Position != TabsPosition.Top;
+			var isStacked = tab.Position == TabsPosition.Left || tab.Position == TabsPosition.Right;
 			var urlHelper = new UrlHelper(this.ViewContext.RequestContext);
 
 			if (tab.Items.Count == 0)
@@ -44,6 +41,11 @@ namespace SmartStore.Web.Framework.UI
 			{
 				tab.HtmlAttributes.AppendCssClass("tabs-autoselect");
 				tab.HtmlAttributes.Add("data-tabselector-href", urlHelper.Action("SetSelectedTab", "Common", new { area = "admin" }));
+			}
+
+			if (isStacked)
+			{
+				tab.HtmlAttributes.AppendCssClass("row");
 			}
 
 			if (tab.OnAjaxBegin.HasValue())
@@ -79,6 +81,12 @@ namespace SmartStore.Web.Framework.UI
 				if (tab.Position == TabsPosition.Below && hasContent)
 					RenderTabContent(writer);
 
+				if (isStacked)
+				{
+					writer.AddAttribute("class", "col-lg-auto nav-aside");
+					writer.RenderBeginTag("aside"); // opening left/right tabs col
+				}
+
 				// Tabs
 				var ulAttrs = new Dictionary<string, object>();
 				ulAttrs.AppendCssClass("nav");
@@ -96,9 +104,9 @@ namespace SmartStore.Web.Framework.UI
 					ulAttrs.AppendCssClass("nav-tabs nav-tabs-line");
 				}
 
-				if (tab.Stacked)
+				if (isStacked)
 				{
-					ulAttrs.AppendCssClass("nav-stacked");
+					ulAttrs.AppendCssClass("flex-row flex-lg-column");
 				}
 				writer.AddAttributes(ulAttrs);
 
@@ -126,8 +134,27 @@ namespace SmartStore.Web.Framework.UI
 					writer.RenderEndTag(); // ul
 				}
 
+				if (isStacked)
+				{
+					writer.RenderEndTag(); // closing left/right tabs col
+				}
+				
+				// TODO: (mc) render right positioned tabs also
 				if (tab.Position != TabsPosition.Below && hasContent)
+				{
+					if (isStacked)
+					{
+						writer.AddAttribute("class", "col-lg nav-content");
+						writer.RenderBeginTag("div"); // opening left/right content col
+					}
+
 					RenderTabContent(writer);
+
+					if (isStacked)
+					{
+						writer.RenderEndTag(); // closing left/right content col
+					}
+				}
 
 				if (selector != null)
 				{
@@ -135,7 +162,7 @@ namespace SmartStore.Web.Framework.UI
 @"<script>
 	$(function() {{
 		_.delay(function() {{
-			$('{0}').trigger('show');
+			$(""{0}"").trigger(""show"");
 		}}, 100);
 	}})
 </script>".FormatInvariant(selector));
@@ -151,7 +178,7 @@ namespace SmartStore.Web.Framework.UI
 
 				writer.RenderEndTag(); // div.tabbable
 				
-				if (tab.IsResponsive && tab.TabContentHeaderContent != null)
+				if (tab.IsResponsive /* && tab.TabContentHeaderContent != null*/)
 				{
 					writer.WriteLine(@"<script>$(function() {{ $('#{0}').responsiveNav(); }})</script>".FormatInvariant(tab.Id));
 				}    
@@ -177,8 +204,7 @@ namespace SmartStore.Web.Framework.UI
 			if (tab.Id.IsEmpty())
 				return null;
 
-			var model = ViewContext.ViewData.Model as EntityModelBase;
-			if (model != null && model.Id == 0)
+			if (ViewContext.ViewData.Model is EntityModelBase model && model.Id == 0)
 			{
 				// it's a "create" operation: don't select
 				return null;
@@ -203,7 +229,7 @@ namespace SmartStore.Web.Framework.UI
 
 					if (tabToSelect.Ajax && tabToSelect.Content == null)
 					{
-						return ".nav a[data-ajax-url][href=#{0}]".FormatInvariant(rememberedTab.TabId);
+						return ".nav a[data-ajax-url][href='#{0}']".FormatInvariant(rememberedTab.TabId);
 					}
 				}
 			}
@@ -266,16 +292,16 @@ namespace SmartStore.Web.Framework.UI
 			string loadedTabName = null;
 
             // <li [class="active [hide]"]><a href="#{id}" data-toggle="tab">{text}</a></li>
-            item.HtmlAttributes.AppendCssClass("nav-item");
+            item.HtmlAttributes.AppendCssClass("nav-item"); // .active for BS2
 
 			if (!item.Selected && !item.Visible)
 			{
-				item.HtmlAttributes.AppendCssClass("hide");
+				item.HtmlAttributes.AppendCssClass("d-none");
 			}
 
 			if (item.Pull == TabPull.Right)
 			{
-				item.HtmlAttributes.AppendCssClass("pull-right");
+				item.HtmlAttributes.AppendCssClass("float-right");
 			}
 
 			writer.AddAttributes(item.HtmlAttributes);
@@ -290,7 +316,7 @@ namespace SmartStore.Web.Framework.UI
 					writer.AddAttribute("data-toggle", "tab");
 					writer.AddAttribute("data-loaded", "true");
                     writer.AddAttribute("class", "nav-link" + (item.Selected ? " active" : ""));
-                    loadedTabName = GetTabName(item) ?? itemId;
+					loadedTabName = GetTabName(item) ?? itemId;
 				}
 				else
 				{
@@ -340,37 +366,30 @@ namespace SmartStore.Web.Framework.UI
 						writer.RenderBeginTag("img");
 						writer.RenderEndTag(); // img
 					}
-					//writer.WriteEncodedText(item.Text);
+
+					// Caption
+					writer.AddAttribute("class", "tab-caption");
+					writer.RenderBeginTag("span");
+					writer.WriteEncodedText(item.Text);
+					writer.RenderEndTag();
 
 					// Badge
 					if (item.BadgeText.HasValue())
 					{
-						//writer.Write("&nbsp;");
-
-						// caption
-						writer.AddAttribute("class", "tab-caption");
-						writer.RenderBeginTag("span");
-						writer.WriteEncodedText(item.Text);
-						writer.RenderEndTag(); // span > badge
-
-						// label
-						temp = "m-l-05 label";
-						temp += " label-" + item.BadgeStyle.ToString().ToLower();
+						// Label/badge
+						temp = "ml-2 badge";
+						temp += " badge-" + item.BadgeStyle.ToString().ToLower();
 						if (base.Component.Position == TabsPosition.Left)
 						{
-							temp += " pull-right"; // looks nicer 
+							temp += " float-right"; // looks nicer 
 						}
 						writer.AddAttribute("class", temp);
 						writer.RenderBeginTag("span");
 						writer.WriteEncodedText(item.BadgeText);
 						writer.RenderEndTag(); // span > badge
 					}
-					else
-					{
-						writer.WriteEncodedText(item.Text);
-					}
 
-					// nav link short summary for collapsed state
+					// Nav link short summary for collapsed state
 					if (this.Component.IsResponsive && item.Summary.HasValue())
 					{
 						writer.AddAttribute("class", "nav-link-summary");
@@ -389,8 +408,7 @@ namespace SmartStore.Web.Framework.UI
 
 		private string GetTabName(Tab tab)
 		{
-			object value;
-			if (tab.LinkHtmlAttributes.TryGetValue("data-tab-name", out value)) 
+			if (tab.LinkHtmlAttributes.TryGetValue("data-tab-name", out object value)) 
 			{
 				return value.ToString();
 			}
@@ -401,6 +419,7 @@ namespace SmartStore.Web.Framework.UI
 		{
 			// <div class="tab-pane fade in [active]" id="{id}">{content}</div>
 			item.ContentHtmlAttributes.AppendCssClass("tab-pane");
+			item.ContentHtmlAttributes.Add("role", "tabpanel");
 			if (base.Component.Fade)
 			{
 				item.ContentHtmlAttributes.AppendCssClass("fade");
@@ -409,7 +428,7 @@ namespace SmartStore.Web.Framework.UI
 			{
 				if (base.Component.Fade)
 				{
-					item.ContentHtmlAttributes.AppendCssClass("in");
+					item.ContentHtmlAttributes.AppendCssClass("show");
 				}
 				item.ContentHtmlAttributes.AppendCssClass("active");
 			}
@@ -433,8 +452,5 @@ namespace SmartStore.Web.Framework.UI
             }
             return "{0}-{1}".FormatInvariant(this.Component.Id, index);
         }
-
-
     }
-
 }

@@ -8,11 +8,12 @@ using SmartStore.Core.Events;
 using SmartStore.Core.Localization;
 using SmartStore.Core.Plugins;
 using SmartStore.Data.Caching;
+using SmartStore.Services.Catalog;
 using SmartStore.Services.Customers;
 
 namespace SmartStore.Services.Directory
 {
-	public partial class DeliveryTimeService : IDeliveryTimeService
+    public partial class DeliveryTimeService : IDeliveryTimeService
     {
         private readonly IRepository<DeliveryTime> _deliveryTimeRepository;
         private readonly IRepository<Product> _productRepository;
@@ -53,9 +54,6 @@ namespace SmartStore.Services.Directory
                 throw new SmartException(T("Admin.Configuration.DeliveryTimes.CannotDeleteAssignedProducts"));
 
             _deliveryTimeRepository.Delete(deliveryTime);
-
-            //event notification
-            _eventPublisher.EntityDeleted(deliveryTime);
         }
 
         public virtual bool IsAssociated(int deliveryTimeId)
@@ -88,18 +86,10 @@ namespace SmartStore.Services.Directory
             return  _deliveryTimeRepository.GetByIdCached(deliveryTimeId, "deliverytime-{0}".FormatInvariant(deliveryTimeId));
         }
 
-		public virtual DeliveryTime GetDeliveryTime(Product product)
+        public virtual DeliveryTime GetDeliveryTime(Product product)
 		{
-			if (product == null)
-				return null;
-
-			if ((product.ManageInventoryMethod == ManageInventoryMethod.ManageStock || product.ManageInventoryMethod == ManageInventoryMethod.ManageStockByAttributes)
-				&& _catalogSettings.DeliveryTimeIdForEmptyStock.HasValue && product.StockQuantity <= 0)
-			{
-				return GetDeliveryTimeById(_catalogSettings.DeliveryTimeIdForEmptyStock.Value);
-			}
-
-			return GetDeliveryTimeById(product.DeliveryTimeId ?? 0);
+            var deliveryTimeId = product.GetDeliveryTimeIdAccordingToStock(_catalogSettings);
+            return GetDeliveryTimeById(deliveryTimeId ?? 0);
 		}
 
         public virtual IList<DeliveryTime> GetAllDeliveryTimes()
@@ -115,9 +105,6 @@ namespace SmartStore.Services.Directory
                 throw new ArgumentNullException("deliveryTime");
 
             _deliveryTimeRepository.Insert(deliveryTime);
-
-            //event notification
-            _eventPublisher.EntityInserted(deliveryTime);
         }
 
         public virtual void UpdateDeliveryTime(DeliveryTime deliveryTime)
@@ -126,9 +113,6 @@ namespace SmartStore.Services.Directory
                 throw new ArgumentNullException("deliveryTime");
 
             _deliveryTimeRepository.Update(deliveryTime);
-
-            //event notification
-            _eventPublisher.EntityUpdated(deliveryTime);
         }
 
         public virtual void SetToDefault(DeliveryTime deliveryTime)
@@ -143,9 +127,6 @@ namespace SmartStore.Services.Directory
                 time.IsDefault = time.Equals(deliveryTime) ? true : false;
                 _deliveryTimeRepository.Update(time);
             }
-            
-            //event notification
-            _eventPublisher.EntityUpdated(deliveryTime);
         }
         
         public virtual DeliveryTime GetDefaultDeliveryTime()

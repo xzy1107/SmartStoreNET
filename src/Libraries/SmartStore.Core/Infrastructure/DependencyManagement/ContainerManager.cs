@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using Autofac;
@@ -26,36 +27,43 @@ namespace SmartStore.Core.Infrastructure.DependencyManagement
             get { return _container; }
         }
 
-		public T Resolve<T>(object key = null, ILifetimeScope scope = null) where T : class
+        [DebuggerStepThrough]
+        public T Resolve<T>(object key = null, ILifetimeScope scope = null) where T : class
         {
             if (key == null)
             {
 				return (scope ?? Scope()).Resolve<T>();
             }
+
 			return (scope ?? Scope()).ResolveKeyed<T>(key);
         }
 
-		public T ResolveNamed<T>(string name, ILifetimeScope scope = null) where T : class
+        [DebuggerStepThrough]
+        public T ResolveNamed<T>(string name, ILifetimeScope scope = null) where T : class
         {
 			return (scope ?? Scope()).ResolveNamed<T>(name);
         }
 
-		public object Resolve(Type type, ILifetimeScope scope = null)
+        [DebuggerStepThrough]
+        public object Resolve(Type type, ILifetimeScope scope = null)
         {
 			return (scope ?? Scope()).Resolve(type);
         }
 
-		public object ResolveNamed(string name, Type type, ILifetimeScope scope = null)
+        [DebuggerStepThrough]
+        public object ResolveNamed(string name, Type type, ILifetimeScope scope = null)
         {
 			return (scope ?? Scope()).ResolveNamed(name, type);
         }
 
-		public T[] ResolveAll<T>(object key = null, ILifetimeScope scope = null)
+        [DebuggerStepThrough]
+        public T[] ResolveAll<T>(object key = null, ILifetimeScope scope = null)
         {
             if (key == null)
             {
 				return (scope ?? Scope()).Resolve<IEnumerable<T>>().ToArray();
             }
+
 			return (scope ?? Scope()).ResolveKeyed<IEnumerable<T>>(key).ToArray();
         }
 
@@ -66,10 +74,9 @@ namespace SmartStore.Core.Infrastructure.DependencyManagement
 
 		public object ResolveUnregistered(Type type, ILifetimeScope scope = null)
         {
-			FastActivator activator;
 			object[] parameterInstances = null;
 
-			if (!_cachedActivators.TryGetValue(type, out activator))
+			if (!_cachedActivators.TryGetValue(type, out FastActivator activator))
 			{
 				var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
 				foreach (var constructor in constructors)
@@ -90,6 +97,7 @@ namespace SmartStore.Core.Infrastructure.DependencyManagement
 				{
 					TryResolveAll(activator.ParameterTypes, out parameterInstances, scope);
                 }
+
 				if (parameterInstances != null)
 				{
 					return activator.Activate(parameterInstances);
@@ -128,14 +136,34 @@ namespace SmartStore.Core.Infrastructure.DependencyManagement
 			}
 		}
 
-		public bool TryResolve(Type serviceType, ILifetimeScope scope, out object instance)
+        [DebuggerStepThrough]
+        public bool TryResolve(Type serviceType, ILifetimeScope scope, out object instance)
         {
-			return (scope ?? Scope()).TryResolve(serviceType, out instance);
+			instance = null;
+
+			try
+			{
+				return (scope ?? Scope()).TryResolve(serviceType, out instance);
+			}
+			catch
+			{
+				return false;
+			}	
         }
 
-		public bool TryResolve<T>(ILifetimeScope scope, out T instance)
+        [DebuggerStepThrough]
+        public bool TryResolve<T>(ILifetimeScope scope, out T instance)
 		{
-			return (scope ?? Scope()).TryResolve<T>(out instance);
+			instance = default;
+
+			try
+			{
+				return (scope ?? Scope()).TryResolve<T>(out instance);
+			}
+			catch
+			{
+				return false;
+			}
 		}
 
 		public bool IsRegistered(Type serviceType, ILifetimeScope scope = null)
@@ -158,6 +186,7 @@ namespace SmartStore.Core.Infrastructure.DependencyManagement
 			return (scope ?? Scope()).InjectUnsetProperties(instance);
 		}
 
+        [DebuggerStepThrough]
         public ILifetimeScope Scope()
         {
 			var scope = _container.Resolve<ILifetimeScopeAccessor>().GetLifetimeScope(null);

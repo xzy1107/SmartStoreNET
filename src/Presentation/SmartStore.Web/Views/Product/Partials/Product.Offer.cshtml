@@ -4,10 +4,12 @@
 @using SmartStore.Core.Domain.Catalog;
 @using SmartStore.Web;
 
-<div class="pd-offer" itemprop="offers" itemscope itemtype="http://schema.org/Offer">
-	@if (!Model.AddToCart.DisableBuyButton || !Model.AddToCart.DisableWishlistButton)
+<div class="pd-offer" @Html.Raw(!Model.ProductPrice.CallForPrice ? "itemprop=\"offers\" itemscope itemtype=\"http://schema.org/Offer\"" : "")>
+	<meta itemprop="itemCondition" content="http://schema.org/NewCondition" />
+
+	@if (!Model.AddToCart.DisableBuyButton || !Model.AddToCart.DisableWishlistButton || Model.ProductPrice.ShowLoginNote)
 	{
-		if (Model.AddToCart.CustomerEntersPrice)
+		if (Model.AddToCart.CustomerEntersPrice && !Model.ProductPrice.HidePrices)
 		{
 			var dataDictCustomerPrice = new ViewDataDictionary();
 			dataDictCustomerPrice.TemplateInfo.HtmlFieldPrefix = string.Format("addtocart_{0}", Model.Id);
@@ -15,7 +17,9 @@
 		}
 		else
 		{
-			Html.RenderPartial("Product.Offer.Price", Model);
+			<div class="pd-offer-price-container" data-partial="Price">
+				@{ Html.RenderPartial("Product.Offer.Price", Model); }
+			</div>
 		}
 	}
 
@@ -26,7 +30,7 @@
 	@if (Model.GiftCard.IsGiftCard)
 	{
 		var dataDictGiftCard = new ViewDataDictionary();
-		dataDictGiftCard.TemplateInfo.HtmlFieldPrefix = string.Format("giftcard_{0}_0", Model.Id);
+		dataDictGiftCard.TemplateInfo.HtmlFieldPrefix = Model.GiftCardFieldPrefix;
 		Html.RenderPartial("Product.GiftCard", Model.GiftCard, dataDictGiftCard);
 	}
 
@@ -37,9 +41,14 @@
 		Html.RenderPartial("Product.Variants", Model.ProductVariantAttributes, dataDictVariants);
 	}
 
+	<div class="pd-offer-actions-container" data-partial="OfferActions">
 	@{ 
 		var dataDictAddToCart = new ViewDataDictionary();
 		dataDictAddToCart.TemplateInfo.HtmlFieldPrefix = string.Format("addtocart_{0}", Model.Id);
 		Html.RenderPartial("Product.Offer.Actions", Model, dataDictAddToCart);
 	}
+	</div>
+	
+	@{ Html.RenderPartial("Product.Offer.Actions.Misc", Model);	}
+
 </div>

@@ -11,12 +11,6 @@ namespace SmartStore.Web
 {
 	public static class ProductDetailsExtensions
 	{		
-		public static bool RenderBundleTitle(this ProductDetailsModel model)
-		{
-			// TODO: (mc) Remove
-			return model.BundleTitleText.HasValue() && model.BundledItems.Where(x => x.BundleItem.Visible).Count() > 0;
-		}
-
 		public static Picture GetAssignedPicture(this ProductDetailsModel model, IPictureService pictureService, IList<Picture> pictures, int productId = 0)
 		{
 			if (model != null && model.SelectedCombination != null)
@@ -61,7 +55,7 @@ namespace SmartStore.Web
 				case AttributeControlType.DropdownList:
 				case AttributeControlType.RadioList:
 				case AttributeControlType.Checkboxes:
-				case AttributeControlType.ColorSquares:
+				case AttributeControlType.Boxes:
 					return (variantAttribute.Values.Count > 0);
 				default:
 					return true;

@@ -1,10 +1,8 @@
-﻿using System;
-using System.Web;
+﻿using System.Collections.Generic;
 using System.Linq;
-using System.Collections.Generic;
+using System.Web;
 using SmartStore.Core;
 using SmartStore.Services.Stores;
-using SmartStore.Core.Async;
 
 namespace SmartStore.Services.Tasks
 {
@@ -70,7 +68,6 @@ namespace SmartStore.Services.Tasks
 
     public static class ITaskSchedulerExtensions
     {
-
 		internal static void SetBaseUrl(this ITaskScheduler scheduler, IStoreService storeService, HttpContextBase httpContext)
         {
             string url = "";
@@ -91,6 +88,5 @@ namespace SmartStore.Services.Tasks
 
             scheduler.BaseUrl = url;
         }
-
     }
 }

@@ -170,6 +170,20 @@ namespace SmartStore.Core.Domain.DataExchange
 		/// </summary>
 		public bool? IsActiveSubscriber { get; set; }
 
+        /// <summary>
+		/// Filter by language
+		/// </summary>
+        public int? WorkingLanguageId { get; set; }
+
+        #endregion
+
+        #region Shopping Cart
+
+        /// <summary>
+        /// Filter by shopping cart type identifier
+        /// </summary>
+        public int? ShoppingCartTypeId { get; set; }
+
 		#endregion
 	}
 }

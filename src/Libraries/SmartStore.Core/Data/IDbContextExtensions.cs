@@ -10,7 +10,6 @@ namespace SmartStore
 {
 	public static class IDbContextExtensions
 	{
-
 		/// <summary>
 		/// Detaches all entities from the current object context
 		/// </summary>
@@ -108,6 +107,12 @@ namespace SmartStore
 			var entry = dbContext.Entry(entity);
 			var collection = entry.Collection(navigationProperty);
 
+			// Avoid System.InvalidOperationException: Member 'IsLoaded' cannot be called for property...
+			if (entry.State == System.Data.Entity.EntityState.Detached)
+			{
+				ctx.Attach(entity);
+			}
+
 			if (force)
 			{
 				collection.IsLoaded = false;
@@ -140,7 +145,8 @@ namespace SmartStore
 			this IDbContext ctx,
 			TEntity entity,
 			Expression<Func<TEntity, TProperty>> navigationProperty,
-			bool force = false)
+			bool force = false,
+			Func<IQueryable<TProperty>, IQueryable<TProperty>> queryAction = null)
 			where TEntity : BaseEntity
 			where TProperty : BaseEntity
 		{
@@ -156,6 +162,12 @@ namespace SmartStore
 			var entry = dbContext.Entry(entity);
 			var reference = entry.Reference(navigationProperty);
 
+			// Avoid System.InvalidOperationException: Member 'IsLoaded' cannot be called for property...
+			if (entry.State == System.Data.Entity.EntityState.Detached)
+			{
+				ctx.Attach(entity);
+			}
+
 			if (force)
 			{
 				reference.IsLoaded = false;
@@ -163,7 +175,23 @@ namespace SmartStore
 
 			if (!reference.IsLoaded)
 			{
-				reference.Load();
+				if (queryAction != null || ctx.ForceNoTracking)
+				{
+					var query = !ctx.ForceNoTracking
+						? reference.Query()
+						: reference.Query().AsNoTracking();
+
+					var myQuery = queryAction != null
+						? queryAction(query)
+						: query;
+
+					reference.CurrentValue = myQuery.FirstOrDefault();
+				}
+				else
+				{
+					reference.Load();
+				}		
+
 				reference.IsLoaded = true;
 			}
 		}

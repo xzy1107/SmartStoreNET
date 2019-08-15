@@ -2,19 +2,15 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Text;
-using System.Threading.Tasks;
 using SmartStore.Core;
 using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Media;
 using SmartStore.Core.Infrastructure;
 
 namespace SmartStore.Services.Media
-{
-	
+{	
 	public static class MediaHelper
 	{
-
 		public static void UpdateDownloadTransientStateFor<TEntity>(TEntity entity, Expression<Func<TEntity, int>> downloadIdProp, bool save = false) where TEntity : BaseEntity
 		{
 			Guard.NotNull(entity, nameof(entity));
@@ -106,12 +102,9 @@ namespace SmartStore.Services.Media
 			Action<object> deleteAction,
 			bool save) where TEntity : BaseEntity where TMedia : BaseEntity
 		{
-			bool editMode = !entity.IsTransientRecord();
-			var modifiedProperties = editMode ? rs.Context.GetModifiedProperties(entity) : new Dictionary<string, object>();
-
 			object obj = null;
 			int prevMediaId = 0;
-			if (modifiedProperties.TryGetValue(propName, out obj))
+			if (rs.Context.TryGetModifiedProperty(entity, propName, out obj))
 			{
 				prevMediaId = ((int?)obj).GetValueOrDefault();
 			}
@@ -180,8 +173,6 @@ namespace SmartStore.Services.Media
 				rs.AutoCommitEnabled = autoCommit;
 			}
 		}
-
-
 	}
 
 }

@@ -4,12 +4,14 @@ using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Messages;
 using SmartStore.Core.Events;
 using SmartStore.Services.Messages;
+using SmartStore.Tests;
 
 namespace SmartStore.Services.Tests.Messages
 {
 	[TestFixture]
 	public class NewsLetterSubscriptionServiceTests : ServiceTest
     {
+		ICommonServices _services;
 		IEventPublisher _eventPublisher;
 		IRepository<NewsLetterSubscription> _subscriptionRepository;
 		IDbContext _dbContext;
@@ -19,10 +21,11 @@ namespace SmartStore.Services.Tests.Messages
 		public new void SetUp()
 		{
 			_eventPublisher = MockRepository.GenerateStub<IEventPublisher>();
+			_services = new MockCommonServices { EventPublisher = _eventPublisher };
 			_subscriptionRepository = MockRepository.GenerateStub<IRepository<NewsLetterSubscription>>();
 			_dbContext = MockRepository.GenerateStub<IDbContext>();
 
-			_newsLetterSubscriptionService = new NewsLetterSubscriptionService(_dbContext, _subscriptionRepository, _eventPublisher);
+			_newsLetterSubscriptionService = new NewsLetterSubscriptionService(_subscriptionRepository, _services);
 		}
 
         /// <summary>
@@ -35,7 +38,7 @@ namespace SmartStore.Services.Tests.Messages
 
 			_newsLetterSubscriptionService.InsertNewsLetterSubscription(subscription, true);
 
-            _eventPublisher.AssertWasCalled(x => x.Publish(new EmailSubscribedEvent(subscription.Email)));
+			_services.EventPublisher.AssertWasCalled(x => x.Publish(new EmailSubscribedEvent(subscription.Email)));
         }
 
         /// <summary>
@@ -48,15 +51,15 @@ namespace SmartStore.Services.Tests.Messages
 
 			_newsLetterSubscriptionService.DeleteNewsLetterSubscription(subscription, true);
 
-            _eventPublisher.AssertWasCalled(x => x.Publish(new EmailUnsubscribedEvent(subscription.Email)));
+			_services.EventPublisher.AssertWasCalled(x => x.Publish(new EmailUnsubscribedEvent(subscription.Email)));
         }
 
         /// <summary>
         /// Verifies the email update triggers unsubscribe and subscribe event.
         /// </summary>
         [Test]
-        [Ignore("Ignoring until a solution to the IDbContext methods are found. -SRS")]
-        public void VerifyEmailUpdateTriggersUnsubscribeAndSubscribeEvent()
+		[Ignore("Ignoring until a solution to the IDbContext methods are found. -SRS")]
+		public void VerifyEmailUpdateTriggersUnsubscribeAndSubscribeEvent()
         {
             //Prepare the original result
 			var originalSubscription = new NewsLetterSubscription { Active = true, Email = "skyler@csharpwebdeveloper.com", StoreId = 1 };
@@ -66,8 +69,8 @@ namespace SmartStore.Services.Tests.Messages
 
 			_newsLetterSubscriptionService.UpdateNewsLetterSubscription(subscription, true);
 
-            _eventPublisher.AssertWasCalled(x => x.Publish(new EmailUnsubscribedEvent(originalSubscription.Email)));
-            _eventPublisher.AssertWasCalled(x => x.Publish(new EmailSubscribedEvent(subscription.Email)));
+			_services.EventPublisher.AssertWasCalled(x => x.Publish(new EmailUnsubscribedEvent(originalSubscription.Email)));
+			_services.EventPublisher.AssertWasCalled(x => x.Publish(new EmailSubscribedEvent(subscription.Email)));
         }
 
         /// <summary>
@@ -85,34 +88,7 @@ namespace SmartStore.Services.Tests.Messages
 
             _newsLetterSubscriptionService.UpdateNewsLetterSubscription(subscription, true);
 
-            _eventPublisher.AssertWasCalled(x => x.Publish(new EmailSubscribedEvent(subscription.Email)));
-        }
-
-        /// <summary>
-        /// Verifies the insert event is fired.
-        /// </summary>
-        [Test]
-        public void VerifyInsertEventIsFired()
-        {
-			_newsLetterSubscriptionService.InsertNewsLetterSubscription(new NewsLetterSubscription { Email = "skyler@csharpwebdeveloper.com", StoreId = 1 });
-
-            _eventPublisher.AssertWasCalled(x => x.EntityInserted(Arg<NewsLetterSubscription>.Is.Anything));
-        }
-
-        /// <summary>
-        /// Verifies the update event is fired.
-        /// </summary>
-        [Test]
-        [Ignore("Ignoring until a solution to the IDbContext methods are found. -SRS")]
-        public void VerifyUpdateEventIsFired()
-        {
-            //Prepare the original result
-			var originalSubscription = new NewsLetterSubscription { Active = false, Email = "skyler@csharpwebdeveloper.com", StoreId = 1 };
-			_subscriptionRepository.Stub(m => m.GetById(Arg<object>.Is.Anything)).Return(originalSubscription);
-
-			_newsLetterSubscriptionService.UpdateNewsLetterSubscription(new NewsLetterSubscription { Email = "skyler@csharpwebdeveloper.com", StoreId = 1 });
-
-            _eventPublisher.AssertWasCalled(x => x.EntityUpdated(Arg<NewsLetterSubscription>.Is.Anything));
+			_services.EventPublisher.AssertWasCalled(x => x.Publish(new EmailSubscribedEvent(subscription.Email)));
         }
     }
 }

@@ -1,26 +1,28 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Web;
-using System.Web.Mvc;
+﻿using FluentValidation;
 using FluentValidation.Attributes;
 using SmartStore.Admin.Models.Tasks;
-using SmartStore.Admin.Validators.DataExchange;
 using SmartStore.Core.Domain.DataExchange;
+using SmartStore.Core.Localization;
+using SmartStore.Utilities;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Modelling;
+using System;
+using System.Collections.Generic;
+using System.Web;
+using System.Web.Mvc;
 
 namespace SmartStore.Admin.Models.DataExchange
 {
-	[Validator(typeof(ExportProfileValidator))]
+    [Validator(typeof(ExportProfileValidator))]
 	public partial class ExportProfileModel : EntityModelBase
-	{
+	{	
 		public int StoreCount { get; set; }
 		public string AllString { get; set; }
 		public string UnspecifiedString { get; set; }
 		public bool LogFileExists { get; set; }
 		public bool HasActiveProvider { get; set; }
 		public string[] FileNamePatternDescriptions { get; set; }
+		public string PrimaryStoreCurrencyCode { get; set; }
 
 		[SmartResourceDisplayName("Admin.DataExchange.Export.Name")]
 		public string Name { get; set; }
@@ -45,7 +47,10 @@ namespace SmartStore.Admin.Models.DataExchange
 		[SmartResourceDisplayName("Common.Enabled")]
 		public bool Enabled { get; set; }
 
-		[SmartResourceDisplayName("Common.Execution")]
+        [SmartResourceDisplayName("Admin.DataExchange.Export.ExportRelatedData")]
+        public bool ExportRelatedData { get; set; }
+
+        [SmartResourceDisplayName("Common.Execution")]
 		public int ScheduleTaskId { get; set; }
 		public string ScheduleTaskName { get; set; }
 		public bool IsTaskRunning { get; set; }
@@ -68,9 +73,9 @@ namespace SmartStore.Admin.Models.DataExchange
 		public List<SelectListItem> AvailableEmailAccounts { get; set; }
 
 		[SmartResourceDisplayName("Admin.DataExchange.Export.CompletedEmailAddresses")]
-		public string CompletedEmailAddresses { get; set; }
-		public string SerializedCompletedEmailAddresses { get; set; }
-
+		public string[] CompletedEmailAddresses { get; set; }
+		public MultiSelectList AvailableCompletedEmailAddresses { get; set; }
+		
 		[SmartResourceDisplayName("Admin.DataExchange.Export.CreateZipArchive")]
 		public bool CreateZipArchive { get; set; }
 
@@ -147,8 +152,7 @@ namespace SmartStore.Admin.Models.DataExchange
 			public string Description { get; set; }
 		}
 	}
-
-
+    
 	public partial class ExportFileDetailsModel : EntityModelBase
 	{
 		public int FileCount
@@ -174,13 +178,15 @@ namespace SmartStore.Admin.Models.DataExchange
 			public int StoreId { get; set; }
 			public string StoreName { get; set; }
 			public string Label { get; set; }
+            public int DisplayOrder { get; set; }
 
-			public int DisplayOrder { get; set; }
+            public RelatedEntityType? RelatedType { get; set; }
 
 			public string FilePath { get; set; }
 			public string FileUrl { get; set; }
+            public string FriendlyFileUrl { get; set; }
 
-			public string FileName { get; set; }
+            public string FileName { get; set; }
 			public string FileExtension { get; set; }
 
 			public string FileRootPath
@@ -198,6 +204,31 @@ namespace SmartStore.Admin.Models.DataExchange
 					return rootPath;
 				}
 			}
-		}
+        }
 	}
+
+    public partial class ExportProfileValidator : AbstractValidator<ExportProfileModel>
+    {
+        public ExportProfileValidator(Localizer T)
+        {
+            RuleFor(x => x.Name).NotEmpty();
+            RuleFor(x => x.FileNamePattern).NotEmpty();
+            RuleFor(x => x.Offset).GreaterThanOrEqualTo(0);
+            RuleFor(x => x.Limit).GreaterThanOrEqualTo(0);
+            RuleFor(x => x.BatchSize).GreaterThanOrEqualTo(0);
+
+            RuleFor(x => x.FolderName)
+                .Must(x =>
+                {
+                    // See ExportProfileService.UpdateExportProfile.
+                    return PathHelper.IsSafeAppRootPath(PathHelper.NormalizeAppRelativePath(x));
+                })
+                .WithMessage(T("Admin.DataExchange.Export.FolderName.Validate"));
+
+            RuleFor(x => x.ExportRelatedData)
+                .Must(x => x == false)
+                .When(x => x.Projection.AttributeCombinationAsProduct)
+                .WithMessage(T("Admin.DataExchange.Export.ExportRelatedData.Validate"));
+        }
+    }
 }

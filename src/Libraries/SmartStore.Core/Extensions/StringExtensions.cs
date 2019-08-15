@@ -9,7 +9,9 @@ using System.IO;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using HtmlAgilityPack;
+using AngleSharp.Dom;
+using AngleSharp.Parser.Html;
+using SmartStore.Core.Html;
 
 namespace SmartStore
 {
@@ -21,32 +23,33 @@ namespace SmartStore
         public const char LineFeed = '\n';
         public const char Tab = '\t';
 
-        private delegate void ActionLine(TextWriter textWriter, string line);
+		private delegate void ActionLine(TextWriter textWriter, string line);
 
         #region Char extensions
 
         [DebuggerStepThrough]
         public static int ToInt(this char value)
         {
-            if ((value >= '0') && (value <= '9'))
+            if (value >= '0' && value <= '9')
             {
-                return (value - '0');
+                return value - '0';
             }
-            if ((value >= 'a') && (value <= 'f'))
+            else if (value >= 'a' && value <= 'f')
             {
-                return ((value - 'a') + 10);
+                return (value - 'a') + 10;
             }
-            if ((value >= 'A') && (value <= 'F'))
+            else if (value >= 'A' && value <= 'F')
             {
-                return ((value - 'A') + 10);
+                return (value - 'A') + 10;
             }
+
             return -1;
         }
 
         [DebuggerStepThrough]
         public static string ToUnicode(this char c)
         {
-            using (StringWriter w = new StringWriter(CultureInfo.InvariantCulture))
+            using (var w = new StringWriter(CultureInfo.InvariantCulture))
             {
                 WriteCharAsUnicode(c, w);
                 return w.ToString();
@@ -70,11 +73,22 @@ namespace SmartStore
             writer.Write(h4);
         }
 
-        #endregion
+		public static char TryRemoveDiacritic(this char c)
+		{
+			var normalized = c.ToString().Normalize(NormalizationForm.FormD);
+			if (normalized.Length > 1)
+			{
+				return normalized[0];
+			}
 
-        #region String extensions
+			return c;
+		}
 
-        [DebuggerStepThrough]
+		#endregion
+
+		#region String extensions
+
+		[DebuggerStepThrough]
         public static T ToEnum<T>(this string value, T defaultValue)
         {
             if (!value.HasValue())
@@ -98,7 +112,8 @@ namespace SmartStore
             {
                 return value;
             }
-            return (defaultValue ?? String.Empty);
+
+            return (defaultValue ?? string.Empty);
         }
 
         [DebuggerStepThrough]
@@ -208,9 +223,10 @@ namespace SmartStore
 		[DebuggerStepThrough]
         public static bool IsWhiteSpace(this string value)
         {
-            Guard.NotNull(value, "value");
+			if (value == null)
+				throw new ArgumentNullException(nameof(value));
 
-            if (value.Length == 0)
+			if (value.Length == 0)
                 return false;
 
             for (int i = 0; i < value.Length; i++)
@@ -262,10 +278,11 @@ namespace SmartStore
 		{
 			if (value.HasValue())
 				return value.Substring(0, length) + new String('*', value.Length - length);
+
 			return value;
 		}
 
-        private static bool IsWebUrlInternal(this string value, bool schemeIsOptional)
+        private static bool IsWebUrlInternal(string value, bool schemeIsOptional)
         {
 			if (String.IsNullOrEmpty(value))
 				return false;
@@ -279,29 +296,18 @@ namespace SmartStore
 
 			return Uri.IsWellFormedUriString(value, UriKind.Absolute) &&
 				(value.StartsWith("http://") || value.StartsWith("https://") || value.StartsWith("ftp://"));
-
-			#region Old (obsolete)
-			//// Uri.TryCreate() does not accept port numbers in uri strings.
-			//if (schemeIsOptional)
-			//{
-			//	Uri uri;
-			//	return Uri.TryCreate(value, UriKind.Absolute, out uri);
-			//}
-
-			//return RegularExpressions.IsWebUrl.IsMatch(value.Trim());
-			#endregion
 		}
 
 		[DebuggerStepThrough]
 		public static bool IsWebUrl(this string value)
 		{
-			return value.IsWebUrlInternal(false);
+			return IsWebUrlInternal(value, false);
 		}
 
 		[DebuggerStepThrough]
 		public static bool IsWebUrl(this string value, bool schemeIsOptional)
 		{
-			return value.IsWebUrlInternal(schemeIsOptional);
+			return IsWebUrlInternal(value, schemeIsOptional);
 		}
 
 		[DebuggerStepThrough]
@@ -351,17 +357,19 @@ namespace SmartStore
         [DebuggerStepThrough]
         public static string Truncate(this string value, int maxLength, string suffix = "")
         {
-            Guard.NotNull(suffix, "suffix");
+			if (suffix == null)
+				throw new ArgumentNullException(nameof(suffix));
+
             Guard.IsPositive(maxLength, nameof(maxLength));
 
-            int subStringLength = maxLength - suffix.Length;
+			int subStringLength = maxLength - suffix.Length;
 
             if (subStringLength <= 0)
-                throw Error.Argument("maxLength", "Length of suffix string is greater or equal to maximumLength");
+                throw Error.Argument(nameof(maxLength), "Length of suffix string is greater or equal to maximumLength");
 
             if (value != null && value.Length > maxLength)
             {
-                string truncatedString = value.Substring(0, subStringLength);
+                var truncatedString = value.Substring(0, subStringLength);
                 // in case the last character is a space
                 truncatedString = truncatedString.Trim();
                 truncatedString += suffix;
@@ -375,6 +383,104 @@ namespace SmartStore
         }
 
 		/// <summary>
+		/// Removes all redundant whitespace (empty lines, double space etc.).
+		/// Use ~! literal to keep whitespace wherever necessary.
+		/// </summary>
+		/// <param name="input">Input</param>
+		/// <returns>The compacted string</returns>
+		public static string Compact(this string input, bool removeEmptyLines = false)
+		{
+			Guard.NotNull(input, nameof(input));
+
+			var sb = new StringBuilder();
+			var lines = GetLines(input.Trim(), true, removeEmptyLines).ToArray();
+
+			foreach (var line in lines)
+			{
+				var len = line.Length;
+				var sbLine = new StringBuilder(len);
+				var isChar = false;
+				var isLiteral = false; // When we detect the ~! literal
+				int i = 0;
+				var eof = false;
+				
+				for (i = 0; i < len; i++)
+				{
+					var c = line[i];
+
+					eof = i == len - 1;
+
+					if (Char.IsWhiteSpace(c))
+					{
+						// Space, Tab etc.
+						if (isChar)
+						{
+							// If last char not empty, append the space.
+							sbLine.Append(' ');
+						}
+
+						isLiteral = false;
+						isChar = false;
+					}
+					else
+					{
+						// Char or Literal (~!)
+
+						isLiteral = c == '~' && !eof && line[i + 1] == '!';
+						isChar = true;
+
+						if (isLiteral)
+						{
+							sbLine.Append(' ');
+							i++; // skip next "!" char
+						}
+						else
+						{
+							sbLine.Append(c);
+						}
+					}
+				}
+
+				// Append the compacted and trimmed line
+				sb.AppendLine(sbLine.ToString().Trim().Trim(','));	
+			}
+
+			return sb.ToString().Trim();
+		}
+
+		/// <summary>
+		/// Splits the input string by carriage return.
+		/// </summary>
+		/// <param name="input">The string to split</param>
+		/// <returns>A sequence with string items per line</returns>
+		public static IEnumerable<string> GetLines(this string input, bool trimLines = false, bool removeEmptyLines = false)
+		{
+			if (input.IsEmpty())
+			{
+				yield break;
+			}
+			
+			using (var sr = new StringReader(input))
+			{
+				string line;
+				while ((line = sr.ReadLine()) != null)
+				{
+					if (trimLines)
+					{
+						line = line.Trim();
+					}
+
+					if (removeEmptyLines && IsEmpty(line))
+					{
+						continue;
+					}
+
+					yield return line;
+				}
+			}
+		}
+
+		/// <summary>
 		/// Ensure that a string starts with a string.
 		/// </summary>
 		/// <param name="value">The target string</param>
@@ -383,8 +489,11 @@ namespace SmartStore
 		[DebuggerStepThrough]
 		public static string EnsureStartsWith(this string value, string startsWith)
 		{
-			Guard.NotNull(value, "value");
-			Guard.NotNull(startsWith, "startsWith");
+			if (value == null)
+				throw new ArgumentNullException(nameof(value));
+
+			if (startsWith == null)
+				throw new ArgumentNullException(nameof(startsWith));
 
 			return value.StartsWith(startsWith) ? value : (startsWith + value);
 		}
@@ -398,10 +507,13 @@ namespace SmartStore
 		[DebuggerStepThrough]
         public static string EnsureEndsWith(this string value, string endWith)
         {
-            Guard.NotNull(value, "value");
-            Guard.NotNull(endWith, "endWith");
+			if (value == null)
+				throw new ArgumentNullException(nameof(value));
 
-            if (value.Length >= endWith.Length)
+			if (endWith == null)
+				throw new ArgumentNullException(nameof(endWith));
+
+			if (value.Length >= endWith.Length)
             {
                 if (string.Compare(value, value.Length - endWith.Length, endWith, 0, endWith.Length, StringComparison.OrdinalIgnoreCase) == 0)
                     return value;
@@ -453,35 +565,7 @@ namespace SmartStore
 
 		public static string RemoveHtml(this string source)
 		{
-			if (source.IsEmpty())
-				return string.Empty;
-
-			var doc = new HtmlDocument()
-			{
-				OptionOutputOriginalCase = true,
-				OptionFixNestedTags = true,
-				OptionAutoCloseOnEnd = true,
-				OptionDefaultStreamEncoding = Encoding.UTF8
-			};
-
-			doc.LoadHtml(source);
-			var nodes = doc.DocumentNode.Descendants().Where(n =>
-			   n.NodeType == HtmlNodeType.Text &&
-			   n.ParentNode.Name != "script" &&
-			   n.ParentNode.Name != "style" &&
-			   n.ParentNode.Name != "svg");
-
-			var sb = new StringBuilder();
-			foreach (var node in nodes)
-			{
-				var text = node.InnerText;
-				if (text.HasValue())
-				{
-					sb.AppendLine(node.InnerText);
-				}
-			}
-
-			return sb.ToString().HtmlDecode();
+			return HtmlUtils.StripTags(source).Trim().HtmlDecode();
 		}
 
 		/// <summary>
@@ -493,10 +577,10 @@ namespace SmartStore
 		[DebuggerStepThrough]
         public static string SplitPascalCase(this string value)
         {
-            //return Regex.Replace(input, "([A-Z][a-z])", " $1", RegexOptions.Compiled).Trim();
-            StringBuilder sb = new StringBuilder();
+            var sb = new StringBuilder();
             char[] ca = value.ToCharArray();
             sb.Append(ca[0]);
+
             for (int i = 1; i < ca.Length - 1; i++)
             {
                 char c = ca[i];
@@ -506,6 +590,7 @@ namespace SmartStore
                 }
                 sb.Append(c);
             }
+
             if (ca.Length > 1)
             {
                 sb.Append(ca[ca.Length - 1]);
@@ -526,48 +611,56 @@ namespace SmartStore
 			if (string.IsNullOrEmpty(value))
 				return new string[0];
 
-			// do not use separator.IsEmpty() here because whitespace like " " is a valid separator.
+			// Do not use separator.IsEmpty() here because whitespace like " " is a valid separator.
 			// an empty separator "" returns array with value.
 			if (separator == null)
 			{
-				separator = "|";
-
-				if (value.IndexOf(separator) < 0)
+				for (var i = 0; i < value.Length; i++)
 				{
-					if (value.IndexOf(';') > -1)
+					var c = value[i];
+					if (c == ';' || c == ',' || c == '|')
 					{
-						separator = ";";
+						return value.Split(new char[] { c }, StringSplitOptions.RemoveEmptyEntries);
 					}
-					else if (value.IndexOf(',') > -1)
+					if (c == '\r' && (i + 1) < value.Length & value[i + 1] == '\n')
 					{
-						separator = ",";
-					}
-					else if (value.IndexOf(Environment.NewLine) > -1)
-					{
-						separator = Environment.NewLine;
+						return value.GetLines(false, true).ToArray();
 					}
 				}
-			}
 
-			return value.Split(new string[] { separator }, StringSplitOptions.RemoveEmptyEntries);
+				return new string[] { value };
+			}
+			else
+			{
+				return value.Split(new string[] { separator }, StringSplitOptions.RemoveEmptyEntries);
+			}
 		}
 
 		/// <summary>Splits a string into two strings</summary>
 		/// <returns>true: success, false: failure</returns>
 		[DebuggerStepThrough]
         [SuppressMessage("ReSharper", "StringIndexOfIsCultureSpecific.1")]
-		public static bool SplitToPair(this string value, out string strLeft, out string strRight, string delimiter)
+		public static bool SplitToPair(this string value, out string leftPart, out string rightPart, string delimiter, bool splitAfterLast = false)
 		{
-			int idx = -1;
-			if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(delimiter) || (idx = value.IndexOf(delimiter)) == -1)
+			leftPart = value;
+			rightPart = "";
+
+			if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(delimiter))
 			{
-				strLeft = value;
-				strRight = "";
 				return false;
 			}
 
-			strLeft = value.Substring(0, idx);
-			strRight = value.Substring(idx + delimiter.Length);
+			var idx = splitAfterLast
+				? value.LastIndexOf(delimiter)
+				: value.IndexOf(delimiter);
+
+			if (idx == -1)
+			{
+				return false;
+			}
+
+			leftPart = value.Substring(0, idx);
+			rightPart = value.Substring(idx + delimiter.Length);
 
 			return true;
 		}
@@ -581,8 +674,8 @@ namespace SmartStore
         [DebuggerStepThrough]
         public static string EncodeJsString(this string value, char delimiter, bool appendDelimiters)
         {
-            StringBuilder sb = new StringBuilder(value != null ? value.Length : 16);
-            using (StringWriter w = new StringWriter(sb, CultureInfo.InvariantCulture))
+            var sb = new StringBuilder(value != null ? value.Length : 16);
+            using (var w = new StringWriter(sb, CultureInfo.InvariantCulture))
             {
                 EncodeJsString(w, value, delimiter, appendDelimiters);
                 return w.ToString();
@@ -699,7 +792,9 @@ namespace SmartStore
 			return string.Format(" {0}=\"{1}\"", name, htmlEncode ? HttpUtility.HtmlEncode(value) : value);
 		}
 		
-		/// <summary>Appends grow and uses delimiter if the string is not empty.</summary>
+		/// <summary>
+		/// Appends grow and uses delimiter if the string is not empty.
+		/// </summary>
         [DebuggerStepThrough]
 		public static string Grow(this string value, string grow, string delimiter) 
         {
@@ -709,24 +804,29 @@ namespace SmartStore
 			if (string.IsNullOrEmpty(grow))
 				return (string.IsNullOrEmpty(value) ? "" : value);
 
-			return string.Format("{0}{1}{2}", value, delimiter, grow);
+			return string.Concat(value, delimiter, grow);
 		}
 		
-		/// <summary>Returns n/a if string is empty else self.</summary>
+		/// <summary>
+		/// Returns n/a if string is empty else self.
+		/// </summary>
         [DebuggerStepThrough]
 		public static string NaIfEmpty(this string value) 
         {
-			return (value.HasValue() ? value : "n/a");
+			return (string.IsNullOrWhiteSpace(value) ? "n/a" : value);
 		}
 
-		/// <summary>Replaces substring with position x1 to x2 by replaceBy.</summary>
+		/// <summary>
+		/// Replaces substring with position x1 to x2 by replaceBy.
+		/// </summary>
         [DebuggerStepThrough]
 		public static string Replace(this string value, int x1, int x2, string replaceBy = null) 
         {
-			if (value.HasValue() && x1 > 0 && x2 > x1 && x2 < value.Length) 
+			if (!string.IsNullOrWhiteSpace(value) && x1 > 0 && x2 > x1 && x2 < value.Length) 
             {
-				return value.Substring(0, x1) + (replaceBy == null ? "" : replaceBy) + value.Substring(x2 + 1);
+				return value.Substring(0, x1) + (replaceBy.EmptyNull()) + value.Substring(x2 + 1);
 			}
+
 			return value;
 		}
 
@@ -751,7 +851,32 @@ namespace SmartStore
 			{
 				exc.Dump();
 			}
+
 			return value;
+		}
+
+		/// <summary>
+		/// Replaces digits in a string with culture native digits (if digit substitution for culture is required)
+		/// </summary>
+		[DebuggerStepThrough]
+		public static string ReplaceNativeDigits(this string value, IFormatProvider provider = null)
+		{
+			if (value == null)
+				throw new ArgumentNullException(nameof(value));
+			
+			provider = provider ?? NumberFormatInfo.CurrentInfo;
+			var nfi = NumberFormatInfo.GetInstance(provider);
+
+			if (nfi.DigitSubstitution == DigitShapes.None)
+			{
+				return value;
+			}
+
+			var nativeDigits = nfi.NativeDigits;
+			var rg = new Regex(@"\d");
+
+			var result = rg.Replace(value, m => nativeDigits[m.Value.ToInt()]);
+			return result;
 		}
 
 		[DebuggerStepThrough]
@@ -761,14 +886,15 @@ namespace SmartStore
 		}
 
         [DebuggerStepThrough]
-		public static string Prettify(this string value, bool allowSpace = false, char[] allowChars = null) 
+		public static string Slugify(this string value, bool allowSpace = false, char[] allowChars = null) 
         {
-			string res = "";
+			string res = string.Empty;
+
 			try 
             {
-				if (value.HasValue()) 
+				if (!string.IsNullOrWhiteSpace(value)) 
                 {
-					StringBuilder sb = new StringBuilder();
+					var sb = new StringBuilder();
 					bool space = false;
 					char ch;
 
@@ -788,7 +914,8 @@ namespace SmartStore
 
 						space = false;
 
-						if ((ch >= 48 && ch <= 57) || (ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122)) {
+						if ((ch >= 48 && ch <= 57) || (ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122) || ch == '_')
+						{
 							sb.Append(ch);
 							continue;
 						}
@@ -799,46 +926,43 @@ namespace SmartStore
 							continue;
 						}
 
-						switch (ch) {
-							case '_': sb.Append(ch); break;
-
-							case 'ä': sb.Append("ae"); break;
-							case 'ö': sb.Append("oe"); break;
-							case 'ü': sb.Append("ue"); break;
-							case 'ß': sb.Append("ss"); break;
-							case 'Ä': sb.Append("AE"); break;
-							case 'Ö': sb.Append("OE"); break;
-							case 'Ü': sb.Append("UE"); break;
-
-							case 'é':
-							case 'è':
-							case 'ê': sb.Append('e'); break;
-							case 'á':
-							case 'à':
-							case 'â': sb.Append('a'); break;
-							case 'ú':
-							case 'ù':
-							case 'û': sb.Append('u'); break;
-							case 'ó':
-							case 'ò':
-							case 'ô': sb.Append('o'); break;
-						}	// switch
+						if ((int)ch >= 128)
+						{
+							switch (ch)
+							{
+								case 'ä': sb.Append("ae"); break;
+								case 'ö': sb.Append("oe"); break;
+								case 'ü': sb.Append("ue"); break;
+								case 'ß': sb.Append("ss"); break;
+								case 'Ä': sb.Append("AE"); break;
+								case 'Ö': sb.Append("OE"); break;
+								case 'Ü': sb.Append("UE"); break;
+								default:
+									var c2 = ch.TryRemoveDiacritic();
+									if ((c2 >= 'a' && c2 <= 'z') || (c2 >= 'A' && c2 <= 'Z'))
+									{
+										sb.Append(c2);
+									}
+									break;
+							} 
+						}
 					}	// for
 
 					if (sb.Length > 0) 
                     {
 						res = sb.ToString().Trim(new char[] { ' ', '-' });
 
-						Regex pat = new Regex(@"(-{2,})");		// remove double SpaceChar
+						Regex pat = new Regex(@"(-{2,})"); // remove double SpaceChar
 						res = pat.Replace(res, "-");
 						res = res.Replace("__", "_");
 					}
 				}
 			}
-			catch (Exception exp) 
+			catch (Exception ex) 
             {
-				exp.Dump();
+				ex.Dump();
 			}
+
 			return (res.Length > 0 ? res : "null");
 		}
 
@@ -849,16 +973,16 @@ namespace SmartStore
 
 		public static string Sha(this string value, Encoding encoding) 
         {
-			if (value.HasValue())
+			if (!string.IsNullOrWhiteSpace(value))
             {
 				using (var sha1 = new SHA1CryptoServiceProvider()) 
                 {
 					byte[] data = encoding.GetBytes(value);
-
 					return sha1.ComputeHash(data).ToHexString();
 				}
 			}
-			return "";
+
+			return string.Empty;
 		}
 
         [DebuggerStepThrough]
@@ -898,22 +1022,21 @@ namespace SmartStore
 
         private static string ToValidPathInternal(this string input, bool isPath, string replacement)
         {
-            var result = input.ToSafe();
-
             var invalidChars = new HashSet<char>(isPath ? Path.GetInvalidPathChars() : Path.GetInvalidFileNameChars());
 
+			replacement = replacement ?? "-";
+
 			var sb = new StringBuilder();
-			foreach (var c in input)
+			foreach (var c in input.ToSafe())
 			{
 				if (invalidChars.Contains(c))
 				{
-					sb.Append(replacement ?? "-");
+					sb.Append(replacement);
 				}
 				else
 				{
 					sb.Append(c);
 				}
-				result = result.Replace(c.ToString(), replacement ?? "-");
 			}
 
 			return sb.ToString();
@@ -933,6 +1056,7 @@ namespace SmartStore
 			var arr = s.ToIntArray();
 			if (arr == null || arr.Count() <= 0)
 				return defaultValue;
+
 			return arr.Contains(value);
 		}
 
@@ -962,24 +1086,24 @@ namespace SmartStore
 		[DebuggerStepThrough]
 		public static string HighlightKeywords(this string input, string keywords, string preMatch = "<strong>", string postMatch = "</strong>")
 		{
-			Guard.NotNull(preMatch, nameof(preMatch));
-			Guard.NotNull(postMatch, nameof(postMatch));
+            Guard.NotNull(preMatch, nameof(preMatch));
+            Guard.NotNull(postMatch, nameof(postMatch));
 
-			if (input.IsEmpty() || keywords.IsEmpty())
+			if (string.IsNullOrWhiteSpace(input) || string.IsNullOrWhiteSpace(keywords))
 			{
 				return input;
 			}
 
 			var pattern = String.Join("|", keywords.Trim().Split(' ', '-')
 				.Select(x => x.Trim())
-				.Where(x => x.HasValue())
+				.Where(x => !string.IsNullOrWhiteSpace(x))
 				.Select(x => Regex.Escape(x))
 				.Distinct());
 
-			if (pattern.HasValue())
+			if (!string.IsNullOrWhiteSpace(pattern))
 			{
 				var rg = new Regex(pattern, RegexOptions.IgnoreCase);
-				input = rg.Replace(input, m => preMatch + m.Value + postMatch);
+				input = rg.Replace(input, m => preMatch + m.Value.EmptyNull().HtmlEncode() + postMatch);
 			}
 
 			return input;

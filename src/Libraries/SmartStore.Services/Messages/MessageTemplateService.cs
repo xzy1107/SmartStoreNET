@@ -15,7 +15,7 @@ namespace SmartStore.Services.Messages
     {
         private const string MESSAGETEMPLATES_ALL_KEY = "SmartStore.messagetemplate.all-{0}";
         private const string MESSAGETEMPLATES_BY_NAME_KEY = "SmartStore.messagetemplate.name-{0}-{1}";
-        private const string MESSAGETEMPLATES_PATTERN_KEY = "SmartStore.messagetemplate.";
+        private const string MESSAGETEMPLATES_PATTERN_KEY = "SmartStore.messagetemplate.*";
 
         private readonly IRepository<MessageTemplate> _messageTemplateRepository;
 		private readonly IRepository<StoreMapping> _storeMappingRepository;
@@ -34,56 +34,44 @@ namespace SmartStore.Services.Messages
             IRepository<MessageTemplate> messageTemplateRepository,
             IEventPublisher eventPublisher)
         {
-			this._requestCache = requestCache;
-			this._storeMappingRepository = storeMappingRepository;
-			this._languageService = languageService;
-			this._localizedEntityService = localizedEntityService;
-			this._storeMappingService = storeMappingService;
-			this._messageTemplateRepository = messageTemplateRepository;
-			this._eventPublisher = eventPublisher;
+			_requestCache = requestCache;
+			_storeMappingRepository = storeMappingRepository;
+			_languageService = languageService;
+			_localizedEntityService = localizedEntityService;
+			_storeMappingService = storeMappingService;
+			_messageTemplateRepository = messageTemplateRepository;
+			_eventPublisher = eventPublisher;
 
-			this.QuerySettings = DbQuerySettings.Default;
+			QuerySettings = DbQuerySettings.Default;
 		}
 
 		public DbQuerySettings QuerySettings { get; set; }
 
 		public virtual void DeleteMessageTemplate(MessageTemplate messageTemplate)
 		{
-			if (messageTemplate == null)
-				throw new ArgumentNullException("messageTemplate");
+			Guard.NotNull(messageTemplate, nameof(messageTemplate));
 
 			_messageTemplateRepository.Delete(messageTemplate);
 
 			_requestCache.RemoveByPattern(MESSAGETEMPLATES_PATTERN_KEY);
-
-			//event notification
-			_eventPublisher.EntityDeleted(messageTemplate);
 		}
 
         public virtual void InsertMessageTemplate(MessageTemplate messageTemplate)
         {
-            if (messageTemplate == null)
-                throw new ArgumentNullException("messageTemplate");
+			Guard.NotNull(messageTemplate, nameof(messageTemplate));
 
-            _messageTemplateRepository.Insert(messageTemplate);
+			_messageTemplateRepository.Insert(messageTemplate);
 
             _requestCache.RemoveByPattern(MESSAGETEMPLATES_PATTERN_KEY);
-
-            //event notification
-            _eventPublisher.EntityInserted(messageTemplate);
         }
 
         public virtual void UpdateMessageTemplate(MessageTemplate messageTemplate)
         {
-            if (messageTemplate == null)
-                throw new ArgumentNullException("messageTemplate");
+			Guard.NotNull(messageTemplate, nameof(messageTemplate));
 
-            _messageTemplateRepository.Update(messageTemplate);
+			_messageTemplateRepository.Update(messageTemplate);
 
             _requestCache.RemoveByPattern(MESSAGETEMPLATES_PATTERN_KEY);
-
-            //event notification
-            _eventPublisher.EntityUpdated(messageTemplate);
         }
 
         public virtual MessageTemplate GetMessageTemplateById(int messageTemplateId)
@@ -96,8 +84,7 @@ namespace SmartStore.Services.Messages
 
 		public virtual MessageTemplate GetMessageTemplateByName(string messageTemplateName, int storeId)
         {
-            if (string.IsNullOrWhiteSpace(messageTemplateName))
-                throw new ArgumentException("messageTemplateName");
+			Guard.NotEmpty(messageTemplateName, nameof(messageTemplateName));
 
             string key = string.Format(MESSAGETEMPLATES_BY_NAME_KEY, messageTemplateName, storeId);
             return _requestCache.Get(key, () =>
@@ -126,7 +113,7 @@ namespace SmartStore.Services.Messages
 				var query = _messageTemplateRepository.Table;
 				query = query.OrderBy(t => t.Name);
 
-				//Store mapping
+				// Store mapping
 				if (storeId > 0 && !QuerySettings.IgnoreMultiStore)
 				{
 					query = from t in query
@@ -136,7 +123,7 @@ namespace SmartStore.Services.Messages
 							where !t.LimitedToStores || storeId == sm.StoreId
 							select t;
 
-					//only distinct items (group by ID)
+					// Only distinct items (group by ID)
 					query = from t in query
 							group t by t.Id	into tGroup
 							orderby tGroup.Key
@@ -150,12 +137,13 @@ namespace SmartStore.Services.Messages
 
 		public virtual MessageTemplate CopyMessageTemplate(MessageTemplate messageTemplate)
 		{
-			if (messageTemplate == null)
-				throw new ArgumentNullException("messageTemplate");
+			Guard.NotNull(messageTemplate, nameof(messageTemplate));
 
 			var mtCopy = new MessageTemplate
 			{
 				Name = messageTemplate.Name,
+				To = messageTemplate.To,
+				ReplyTo = messageTemplate.ReplyTo,
 				BccEmailAddresses = messageTemplate.BccEmailAddresses,
 				Subject = messageTemplate.Subject,
 				Body = messageTemplate.Body,
@@ -172,19 +160,19 @@ namespace SmartStore.Services.Messages
 			// localization
 			foreach (var lang in languages)
 			{
-				var bccEmailAddresses = messageTemplate.GetLocalized(x => x.BccEmailAddresses, lang.Id, false, false);
+				string bccEmailAddresses = messageTemplate.GetLocalized(x => x.BccEmailAddresses, lang, false, false);
 				if (bccEmailAddresses.HasValue())
 					_localizedEntityService.SaveLocalizedValue(mtCopy, x => x.BccEmailAddresses, bccEmailAddresses, lang.Id);
 
-				var subject = messageTemplate.GetLocalized(x => x.Subject, lang.Id, false, false);
+				string subject = messageTemplate.GetLocalized(x => x.Subject, lang, false, false);
 				if (subject.HasValue())
 					_localizedEntityService.SaveLocalizedValue(mtCopy, x => x.Subject, subject, lang.Id);
 
-				var body = messageTemplate.GetLocalized(x => x.Body, lang.Id, false, false);
+				string body = messageTemplate.GetLocalized(x => x.Body, lang, false, false);
 				if (body.HasValue())
 					_localizedEntityService.SaveLocalizedValue(mtCopy, x => x.Body, subject, lang.Id);
 
-				var emailAccountId = messageTemplate.GetLocalized(x => x.EmailAccountId, lang.Id, false, false);
+				int emailAccountId = messageTemplate.GetLocalized(x => x.EmailAccountId, lang, false, false);
 				if (emailAccountId > 0)
 					_localizedEntityService.SaveLocalizedValue(mtCopy, x => x.EmailAccountId, emailAccountId, lang.Id);
 			}

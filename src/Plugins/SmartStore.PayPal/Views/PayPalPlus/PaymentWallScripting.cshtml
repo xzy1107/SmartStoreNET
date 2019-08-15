@@ -64,6 +64,9 @@
 					if (resp.success) {
 						PAYPAL.apps.PPP.doCheckout();
 					}
+					else if (resp.reload) {
+						window.location.reload(true);
+					}
 					else {
 						window.displayNotification(resp.error, 'error');
 					}
@@ -71,7 +74,6 @@
 			});
 			return false;
 		});
-
 
 		function pppDisplayPaymentFees (method, selected) {
 			try {
@@ -112,6 +114,5 @@
 				console.log(e.description);
 			}
 		}
-
 	});
 </script>

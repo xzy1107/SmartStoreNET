@@ -43,6 +43,13 @@ namespace SmartStore.Services.Catalog
         /// <param name="productAttribute">Product attribute</param>
         void UpdateProductAttribute(ProductAttribute productAttribute);
 
+		/// <summary>
+		/// Gets the export mappings for a given field prefix.
+		/// </summary>
+		/// <param name="fieldPrefix">The export field prefix, e.g. gmc.</param>
+		/// <returns>A multimap with export field names to ProductAttribute.Id mappings.</returns>
+		Multimap<string, int> GetExportFieldMappings(string fieldPrefix);
+
 		#endregion
 
 		#region Product attribute options
@@ -60,6 +67,13 @@ namespace SmartStore.Services.Catalog
 		/// <param name="optionsSetId">Attribute options set identifier</param>
 		/// <returns>List of attribute options</returns>
 		IList<ProductAttributeOption> GetProductAttributeOptionsByOptionsSetId(int optionsSetId);
+
+		/// <summary>
+		/// Gets all attribute options by attribute identifier
+		/// </summary>
+		/// <param name="attributeId">Attribute identifier</param>
+		/// <returns>List of attribute options</returns>
+		IList<ProductAttributeOption> GetProductAttributeOptionsByAttributeId(int attributeId);
 
 		/// <summary>
 		/// Deletes an attribute option
@@ -269,11 +283,25 @@ namespace SmartStore.Services.Catalog
         ProductVariantAttributeCombination GetProductVariantAttributeCombinationById(int productVariantAttributeCombinationId);
 
 		/// <summary>
-		/// /// Gets a product variant attribute combination by SKU
+		/// Gets a product variant attribute combination by SKU
 		/// </summary>
 		/// <param name="sku">SKU</param>
 		/// <returns>Product variant attribute combination</returns>
 		ProductVariantAttributeCombination GetProductVariantAttributeCombinationBySku(string sku);
+
+        /// <summary>
+        /// Gets a product variant attribute combination by GTIN.
+        /// </summary>
+        /// <param name="gtin">GTIN.</param>
+        /// <returns>Product variant attribute combination.</returns>
+        ProductVariantAttributeCombination GetAttributeCombinationByGtin(string gtin);
+
+        /// <summary>
+        /// Gets a product variant attribute combination by manufacturer part number.
+        /// </summary>
+        /// <param name="manufacturerPartNumber">Manufacturer part number.</param>
+        /// <returns>Product variant attribute combination.</returns>
+        ProductVariantAttributeCombination GetAttributeCombinationByMpn(string manufacturerPartNumber);
 
         /// <summary>
         /// Inserts a product variant attribute combination

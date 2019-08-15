@@ -3,6 +3,7 @@ using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Discounts;
 using SmartStore.Core.Domain.Orders;
+using SmartStore.Core.Domain.Directory;
 
 namespace SmartStore.Services.Catalog
 {
@@ -76,8 +77,8 @@ namespace SmartStore.Services.Catalog
 			bool includeDiscounts,
 			int quantity,
 			ProductBundleItemData bundleItem = null,
-			PriceCalculationContext context = null);
-
+			PriceCalculationContext context = null,
+            bool isTierPrice = false);
 		/// <summary>
 		/// Gets the final price including bundle per-item pricing
 		/// </summary>
@@ -125,9 +126,10 @@ namespace SmartStore.Services.Catalog
 		/// </summary>
 		/// <param name="product">Product</param>
 		/// <param name="customer">The customer</param>
+		/// <param name="currency">The currency</param>
 		/// <param name="context">Object with cargo data for better performance</param>
 		/// <returns>Preselected price</returns>
-		decimal GetPreselectedPrice(Product product, Customer customer, PriceCalculationContext context);
+		decimal GetPreselectedPrice(Product product, Customer customer, Currency currency, PriceCalculationContext context);
 
 		/// <summary>
 		/// Gets the product cost
@@ -237,6 +239,7 @@ namespace SmartStore.Services.Catalog
 		/// </summary>
 		/// <param name="attributeValue">Product variant attribute value</param>
 		/// <returns>Price adjustment of a variant attribute value</returns>
-		decimal GetProductVariantAttributeValuePriceAdjustment(ProductVariantAttributeValue attributeValue);
+		decimal GetProductVariantAttributeValuePriceAdjustment(ProductVariantAttributeValue attributeValue, 
+            Product product, Customer customer, PriceCalculationContext context, int productQuantity = 1);
     }
 }

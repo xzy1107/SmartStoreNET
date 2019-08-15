@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using SmartStore.Core.Logging;
 using StackExchange.Profiling;
 
@@ -7,7 +8,7 @@ namespace SmartStore.DevTools.Services
 {
 	public class MiniProfilerChronometer : IChronometer
 	{
-		private readonly ConcurrentDictionary<string, ConcurrentStack<IDisposable>> _steps = new ConcurrentDictionary<string, ConcurrentStack<IDisposable>>();
+		private readonly Dictionary<string, Stack<IDisposable>> _steps = new Dictionary<string, Stack<IDisposable>>();
 		private MiniProfiler _profiler;
 
 		public MiniProfilerChronometer()
@@ -30,24 +31,25 @@ namespace SmartStore.DevTools.Services
 				return;
 			}
 
-			var stack = _steps.GetOrAdd(key, k => new ConcurrentStack<IDisposable>());
+			var stack = _steps.Get(key);
+			if (stack == null)
+			{
+				_steps[key] = stack = new Stack<IDisposable>();
+			}
+
 			var step = Profiler.Step(message);
 			stack.Push(step);
 		}
 
 		public void StepStop(string key)
 		{
-			if (this.Profiler == null)
+			if (_steps.ContainsKey(key) && _steps[key].Count > 0)
 			{
-				return;
-			}
-
-			IDisposable step;
-			if (this._steps.ContainsKey(key))
-			{
-				if (this._steps[key].TryPop(out step))
+				var step = _steps[key].Pop();
+				step.Dispose();
+				if (_steps[key].Count == 0)
 				{
-					step.Dispose();
+					_steps.Remove(key);
 				}
 			}
 		}
@@ -55,13 +57,9 @@ namespace SmartStore.DevTools.Services
 		private void StopAll()
 		{
 			// Dispose any orphaned steps
-			foreach (var stack in this._steps.Values)
+			foreach (var stack in _steps.Values)
 			{
-				IDisposable step;
-				while (stack.TryPop(out step))
-				{
-					step.Dispose();
-				}
+				stack.Each(x => x.Dispose());
 			}
 
 			_steps.Clear();

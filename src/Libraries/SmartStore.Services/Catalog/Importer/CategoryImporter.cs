@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
@@ -9,23 +8,18 @@ using SmartStore.Core.Data;
 using SmartStore.Core.Domain.Catalog;
 using SmartStore.Core.Domain.DataExchange;
 using SmartStore.Core.Domain.Media;
-using SmartStore.Core.Domain.Seo;
-using SmartStore.Core.Domain.Stores;
-using SmartStore.Core.Events;
 using SmartStore.Services.DataExchange.Import;
+using SmartStore.Services.DataExchange.Import.Events;
 using SmartStore.Services.Localization;
 using SmartStore.Services.Media;
-using SmartStore.Services.Seo;
-using SmartStore.Services.Stores;
 using SmartStore.Utilities;
 
 namespace SmartStore.Services.Catalog.Importer
 {
-	public class CategoryImporter : EntityImporterBase
+    public class CategoryImporter : EntityImporterBase
 	{
 		private readonly IRepository<Category> _categoryRepository;
 		private readonly IRepository<Picture> _pictureRepository;
-		private readonly ICommonServices _services;
 		private readonly ICategoryTemplateService _categoryTemplateService;
 		private readonly IPictureService _pictureService;
 		private readonly ILocalizedEntityService _localizedEntityService;
@@ -45,7 +39,6 @@ namespace SmartStore.Services.Catalog.Importer
 		public CategoryImporter(
 			IRepository<Category> categoryRepository,
 			IRepository<Picture> pictureRepository,
-			ICommonServices services,
 			ICategoryTemplateService categoryTemplateService,
 			IPictureService pictureService,
 			ILocalizedEntityService localizedEntityService,
@@ -53,7 +46,6 @@ namespace SmartStore.Services.Catalog.Importer
 		{
 			_categoryRepository = categoryRepository;
 			_pictureRepository = pictureRepository;
-			_services = services;
 			_categoryTemplateService = categoryTemplateService;
 			_pictureService = pictureService;
 			_localizedEntityService = localizedEntityService;
@@ -66,7 +58,7 @@ namespace SmartStore.Services.Catalog.Importer
 
 			var templateViewPaths = _categoryTemplateService.GetAllCategoryTemplates().ToDictionarySafe(x => x.ViewPath, x => x.Id);
 
-			using (var scope = new DbContextScope(ctx: context.Services.DbContext, autoDetectChanges: false, proxyCreation: false, validateOnSave: false))
+			using (var scope = new DbContextScope(ctx: context.Services.DbContext, hooksEnabled: false, autoDetectChanges: false, proxyCreation: false, validateOnSave: false))
 			{
 				var segmenter = context.DataSegmenter;
 
@@ -77,7 +69,7 @@ namespace SmartStore.Services.Catalog.Importer
 					var batch = segmenter.GetCurrentBatch<Category>();
 
 					// Perf: detach all entities
-					_categoryRepository.Context.DetachAll(false);
+					_categoryRepository.Context.DetachAll(true);
 
 					context.SetProgress(segmenter.CurrentSegmentFirstRowIndex - 1, segmenter.TotalRows);
 
@@ -85,20 +77,20 @@ namespace SmartStore.Services.Catalog.Importer
 					{
 						ProcessCategories(context, batch, templateViewPaths, srcToDestId);
 					}
-					catch (Exception exception)
+					catch (Exception ex)
 					{
-						context.Result.AddError(exception, segmenter.CurrentSegment, "ProcessCategories");
+						context.Result.AddError(ex, segmenter.CurrentSegment, "ProcessCategories");
 					}
 
-					// reduce batch to saved (valid) products.
+					// Reduce batch to saved (valid) products.
 					// No need to perform import operations on errored products.
 					batch = batch.Where(x => x.Entity != null && !x.IsTransient).ToArray();
 
-					// update result object
+					// Update result object.
 					context.Result.NewRecords += batch.Count(x => x.IsNew && !x.IsTransient);
 					context.Result.ModifiedRecords += batch.Count(x => !x.IsNew && !x.IsTransient);
 
-					// process slugs
+					// Process slugs.
 					if (segmenter.HasColumn("SeName", true) || batch.Any(x => x.IsNew || x.NameChanged))
 					{
 						try
@@ -106,9 +98,9 @@ namespace SmartStore.Services.Catalog.Importer
 							_categoryRepository.Context.AutoDetectChangesEnabled = true;
 							ProcessSlugs(context, batch, typeof(Category).Name);
 						}
-						catch (Exception exception)
+						catch (Exception ex)
 						{
-							context.Result.AddError(exception, segmenter.CurrentSegment, "ProcessSlugs");
+							context.Result.AddError(ex, segmenter.CurrentSegment, "ProcessSlugs");
 						}
 						finally
 						{
@@ -116,49 +108,51 @@ namespace SmartStore.Services.Catalog.Importer
 						}
 					}
 
-					// process store mappings
+					// Process store mappings.
 					if (segmenter.HasColumn("StoreIds"))
 					{
 						try
 						{
 							ProcessStoreMappings(context, batch);
 						}
-						catch (Exception exception)
+						catch (Exception ex)
 						{
-							context.Result.AddError(exception, segmenter.CurrentSegment, "ProcessStoreMappings");
+							context.Result.AddError(ex, segmenter.CurrentSegment, "ProcessStoreMappings");
 						}
 					}
 
-					// localizations
+					// Localizations.
 					try
 					{
 						ProcessLocalizations(context, batch, _localizableProperties);
 					}
-					catch (Exception exception)
+					catch (Exception ex)
 					{
-						context.Result.AddError(exception, segmenter.CurrentSegment, "ProcessLocalizedProperties");
+						context.Result.AddError(ex, segmenter.CurrentSegment, "ProcessLocalizedProperties");
 					}
 
-					// process pictures
-					if (srcToDestId.Any() && segmenter.HasColumn("ImageUrl") && !segmenter.IsIgnored("PictureId"))
+					// Process pictures.
+					if (segmenter.HasColumn("ImageUrl") && !segmenter.IsIgnored("PictureId"))
 					{
 						try
 						{
 							_categoryRepository.Context.AutoDetectChangesEnabled = true;
-							ProcessPictures(context, batch, srcToDestId);
+							ProcessPictures(context, batch);
 						}
-						catch (Exception exception)
+						catch (Exception ex)
 						{
-							context.Result.AddError(exception, segmenter.CurrentSegment, "ProcessPictures");
+							context.Result.AddError(ex, segmenter.CurrentSegment, "ProcessPictures");
 						}
 						finally
 						{
 							_categoryRepository.Context.AutoDetectChangesEnabled = false;
 						}
 					}
-				}
 
-				// map parent id of inserted categories
+                    context.Services.EventPublisher.Publish(new ImportBatchExecutedEvent<Category>(context, batch));
+                }
+
+				// Map parent id of inserted categories.
 				if (srcToDestId.Any() && segmenter.HasColumn("Id") && segmenter.HasColumn("ParentCategoryId") && !segmenter.IsIgnored("ParentCategoryId"))
 				{
 					segmenter.Reset();
@@ -172,9 +166,9 @@ namespace SmartStore.Services.Catalog.Importer
 						{
 							ProcessParentMappings(context, batch, srcToDestId);
 						}
-						catch (Exception exception)
+						catch (Exception ex)
 						{
-							context.Result.AddError(exception, segmenter.CurrentSegment, "ProcessParentMappings");
+							context.Result.AddError(ex, segmenter.CurrentSegment, "ProcessParentMappings");
 						}
 					}
 				}
@@ -183,79 +177,74 @@ namespace SmartStore.Services.Catalog.Importer
 
 		protected virtual int ProcessPictures(
 			ImportExecuteContext context,
-			IEnumerable<ImportRow<Category>> batch,
-			Dictionary<int, ImportCategoryMapping> srcToDestId)
+			IEnumerable<ImportRow<Category>> batch)
 		{
-			Picture picture = null;
-			var equalPictureId = 0;
-
 			foreach (var row in batch)
 			{
 				try
 				{
 					var srcId = row.GetDataValue<int>("Id");
-					var urlOrPath = row.GetDataValue<string>("ImageUrl");
+					var imageUrl = row.GetDataValue<string>("ImageUrl");
+                    if (imageUrl.IsEmpty())
+                    {
+                        continue;
+                    }
 
-					if (srcId != 0 && srcToDestId.ContainsKey(srcId) && urlOrPath.HasValue())
-					{
-						var currentPictures = new List<Picture>();
-						var category = _categoryRepository.GetById(srcToDestId[srcId].DestinationId);
-						var seoName = _pictureService.GetPictureSeName(row.EntityDisplayName);
-						var image = CreateDownloadImage(urlOrPath, seoName, 1);
+                    var seoName = _pictureService.GetPictureSeName(row.EntityDisplayName);
+                    var image = CreateDownloadImage(context, imageUrl, seoName, 1);
 
-						if (category != null && image != null)
-						{
-							if (image.Url.HasValue() && !image.Success.HasValue)
-							{
-								AsyncRunner.RunSync(() => _fileDownloadManager.DownloadAsync(DownloaderContext, new FileDownloadManagerItem[] { image }));
-							}
+                    if (image.Url.HasValue() && !image.Success.HasValue)
+                    {
+                        AsyncRunner.RunSync(() => _fileDownloadManager.DownloadAsync(DownloaderContext, new FileDownloadManagerItem[] { image }));
+                    }
 
-							if ((image.Success ?? false) && File.Exists(image.Path))
-							{
-								Succeeded(image);
-								var pictureBinary = File.ReadAllBytes(image.Path);
+                    if ((image.Success ?? false) && File.Exists(image.Path))
+                    {
+                        Succeeded(image);
+                        var pictureBinary = File.ReadAllBytes(image.Path);
 
-								if (pictureBinary != null && pictureBinary.Length > 0)
-								{
-									if (category.PictureId.HasValue && (picture = _pictureRepository.GetById(category.PictureId.Value)) != null)
-										currentPictures.Add(picture);
+                        if (pictureBinary != null && pictureBinary.Length > 0)
+                        {
+                            var currentPictures = new List<Picture>();
+                            var pictureId = row.Entity.PictureId ?? 0;
+                            if (pictureId != 0)
+                            {
+                                var picture = _pictureRepository.TableUntracked.Expand(x => x.MediaStorage).FirstOrDefault(x => x.Id == pictureId);
+                                if (picture != null)
+                                {
+                                    currentPictures.Add(picture);
+                                }
+                            }
 
-									var size = Size.Empty;
+                            pictureBinary = _pictureService.FindEqualPicture(pictureBinary, currentPictures, out var equalPictureId);
 
-									pictureBinary = _pictureService.ValidatePicture(pictureBinary, out size);
-									pictureBinary = _pictureService.FindEqualPicture(pictureBinary, currentPictures, out equalPictureId);
-
-									if (pictureBinary != null && pictureBinary.Length > 0)
-									{
-										if ((picture = _pictureService.InsertPicture(pictureBinary, image.MimeType, seoName, true, false, false)) != null)
-										{
-											picture.Width = size.Width;
-											picture.Height = size.Height;
-											category.PictureId = picture.Id;
-											_categoryRepository.Update(category);
-										}
-									}
-									else
-									{
-										context.Result.AddInfo("Found equal picture in data store. Skipping field.", row.GetRowInfo(), "ImageUrls");
-									}
-								}
-							}
-							else if (image.Url.HasValue())
-							{
-								context.Result.AddInfo("Download of an image failed.", row.GetRowInfo(), "ImageUrls");
-							}
-						}
-					}
+                            if (pictureBinary != null && pictureBinary.Length > 0)
+                            {
+                                var picture = _pictureService.InsertPicture(pictureBinary, image.MimeType, seoName, true, false, false);
+                                if (picture != null)
+                                {
+                                    row.Entity.PictureId = picture.Id;
+                                    _categoryRepository.Update(row.Entity);
+                                }
+                            }
+                            else
+                            {
+                                context.Result.AddInfo("Found equal picture in data store. Skipping field.", row.GetRowInfo(), "ImageUrls");
+                            }
+                        }
+                    }
+                    else if (image.Url.HasValue())
+                    {
+                        context.Result.AddInfo("Download of an image failed.", row.GetRowInfo(), "ImageUrls");
+                    }
 				}
-				catch (Exception exception)
+				catch (Exception ex)
 				{
-					context.Result.AddWarning(exception.ToAllMessages(), row.GetRowInfo(), "ImageUrls");
+					context.Result.AddWarning(ex.ToAllMessages(), row.GetRowInfo(), "ImageUrls");
 				}
 			}
 
 			var num = _categoryRepository.Context.SaveChanges();
-
 			return num;
 		}
 
@@ -339,11 +328,10 @@ namespace SmartStore.Services.Catalog.Importer
 		{
 			_categoryRepository.AutoCommitEnabled = true;
 
-			Category lastInserted = null;
-			Category lastUpdated = null;
 			var defaultTemplateId = templateViewPaths["CategoryTemplate.ProductsInGridOrLines"];
+            var hasNameColumn = context.DataSegmenter.HasColumn("Name");
 
-			foreach (var row in batch)
+            foreach (var row in batch)
 			{
 				Category category = null;
 				var id = row.GetDataValue<int>("Id");
@@ -375,9 +363,9 @@ namespace SmartStore.Services.Catalog.Importer
 						continue;
 					}
 
-					// a Name is required with new categories
-					if (!row.Segmenter.HasColumn("Name"))
-					{
+                    // A name is required for new categories.
+                    if (!row.HasDataValue("Name"))
+                    {
 						++context.Result.SkippedRecords;
 						context.Result.AddError("The 'Name' field is required for new categories. Skipping row.", row.GetRowInfo(), "Name");
 						continue;
@@ -388,7 +376,7 @@ namespace SmartStore.Services.Catalog.Importer
 
 				row.Initialize(category, name ?? category.Name);
 
-				if (!row.IsNew && !category.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+				if (!row.IsNew && hasNameColumn && !category.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
 				{
 					// Perf: use this later for SeName updates.
 					row.NameChanged = true;
@@ -428,36 +416,24 @@ namespace SmartStore.Services.Catalog.Importer
 				if (row.IsTransient)
 				{
 					_categoryRepository.Insert(category);
-					lastInserted = category;
 				}
 				else
 				{
 					_categoryRepository.Update(category);
-					lastUpdated = category;
 				}
 			}
 
-			// commit whole batch at once
+			// Commit whole batch at once.
 			var num = _categoryRepository.Context.SaveChanges();
 
-			// get new category ids
+			// Get new category ids.
 			foreach (var row in batch)
 			{
 				var id = row.GetDataValue<int>("Id");
-
-				if (id != 0 && srcToDestId.ContainsKey(id))
-					srcToDestId[id].DestinationId = row.Entity.Id;
-			}
-
-			// Perf: notify only about LAST insertion and update
-			if (lastInserted != null)
-			{
-				_services.EventPublisher.EntityInserted(lastInserted);
-			}
-
-			if (lastUpdated != null)
-			{
-				_services.EventPublisher.EntityUpdated(lastUpdated);
+                if (id != 0 && srcToDestId.ContainsKey(id))
+                {
+                    srcToDestId[id].DestinationId = row.Entity.Id;
+                }
 			}
 
 			return num;

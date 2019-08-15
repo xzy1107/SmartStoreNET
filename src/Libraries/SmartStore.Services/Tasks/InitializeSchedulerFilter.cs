@@ -1,31 +1,23 @@
-﻿using SmartStore.Core;
+﻿using System;
+using System.Web.Mvc;
+using System.Web.Mvc.Filters;
 using SmartStore.Core.Events;
 using SmartStore.Core.Infrastructure;
-using SmartStore.Services.Stores;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Web.Mvc;
-using SmartStore.Core.Data;
 using SmartStore.Core.Logging;
+using SmartStore.Services.Stores;
 using SmartStore.Utilities;
 
 namespace SmartStore.Services.Tasks
 {
-    public class InitializeSchedulerFilter : IAuthorizationFilter
+	public class InitializeSchedulerFilter : IAuthenticationFilter
     {
         private readonly static object s_lock = new object();
 		private static int s_errCount;
         private static bool s_initializing = false;
         
-        public void OnAuthorization(AuthorizationContext filterContext)
+        public void OnAuthentication(AuthenticationContext filterContext)
         {
-			if (filterContext == null || filterContext.HttpContext == null)
-				return;
-
-			var request = filterContext.HttpContext.Request;
+			var request = filterContext?.HttpContext?.Request;
 			if (request == null)
 				return;
 
@@ -38,15 +30,15 @@ namespace SmartStore.Services.Tasks
                 {
                     s_initializing = true;
 
+					var eventPublisher = EngineContext.Current.Resolve<IEventPublisher>();
 					var logger = EngineContext.Current.Resolve<ILoggerFactory>().CreateLogger<InitializeSchedulerFilter>();
-					ITaskScheduler taskScheduler = EngineContext.Current.Resolve<ITaskScheduler>();
+					var taskScheduler = EngineContext.Current.Resolve<ITaskScheduler>();
 
 					try
 					{
 						var taskService = EngineContext.Current.Resolve<IScheduleTaskService>();
 						var storeService = EngineContext.Current.Resolve<IStoreService>();
-						var eventPublisher = EngineContext.Current.Resolve<IEventPublisher>();
-
+						
 						var tasks = taskService.GetAllTasks(true);
 						taskService.CalculateFutureSchedules(tasks, true /* isAppStart */);
 
@@ -91,5 +83,9 @@ namespace SmartStore.Services.Tasks
                 }
             }
         }
-    }
+
+		public void OnAuthenticationChallenge(AuthenticationChallengeContext filterContext)
+		{
+		}
+	}
 }

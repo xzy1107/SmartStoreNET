@@ -1,7 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Web.Mvc;
+using FluentValidation;
 using FluentValidation.Attributes;
-using SmartStore.Admin.Validators.Catalog;
+using SmartStore.Core.Domain.Catalog;
 using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Localization;
 using SmartStore.Web.Framework.Modelling;
@@ -21,16 +23,16 @@ namespace SmartStore.Admin.Models.Catalog
 		public int ProductVariantAttributeId { get; set; }
 		public int ProductAttributeOptionsSetId { get; set; }
 
-		[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.Name")]
+		[AllowHtml, SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.Name")]
 		public string Name { get; set; }
 		public string NameString { get; set; }
 
-		[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.Alias")]
+		[AllowHtml, SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.Alias")]
 		public string Alias { get; set; }
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.ColorSquaresRgb")]
 		[UIHint("Color")]
-		public string ColorSquaresRgb { get; set; }
+		public string Color { get; set; }
 		public bool IsListTypeAttribute { get; set; }
 
 		[UIHint("Picture")]
@@ -50,7 +52,7 @@ namespace SmartStore.Admin.Models.Catalog
 		[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.IsPreSelected")]
 		public bool IsPreSelected { get; set; }
 
-		[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.DisplayOrder")]
+		[SmartResourceDisplayName("Common.DisplayOrder")]
 		public int DisplayOrder { get; set; }
 
 		[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.ValueTypeId")]
@@ -77,10 +79,19 @@ namespace SmartStore.Admin.Models.Catalog
 	{
 		public int LanguageId { get; set; }
 
-		[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.Name")]
+		[AllowHtml, SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.Name")]
 		public string Name { get; set; }
 
-		[SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.Alias")]
+		[AllowHtml, SmartResourceDisplayName("Admin.Catalog.Products.ProductVariantAttributes.Attributes.Values.Fields.Alias")]
 		public string Alias { get; set; }
+	}
+
+	public partial class ProductAttributeOptionModelValidator : AbstractValidator<ProductAttributeOptionModel>
+	{
+		public ProductAttributeOptionModelValidator()
+		{
+			RuleFor(x => x.Name).NotEmpty();
+			RuleFor(x => x.Quantity).GreaterThan(0).When(x => x.ValueTypeId == (int)ProductVariantAttributeValueType.ProductLinkage);
+		}
 	}
 }

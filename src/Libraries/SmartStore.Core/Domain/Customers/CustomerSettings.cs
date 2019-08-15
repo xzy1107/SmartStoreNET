@@ -1,21 +1,19 @@
-﻿
-using SmartStore.Core.Configuration;
+﻿using SmartStore.Core.Configuration;
 
 namespace SmartStore.Core.Domain.Customers
 {
-    public class CustomerSettings : ISettings
+	public class CustomerSettings : ISettings
     {
 		public CustomerSettings()
 		{
-			UsernamesEnabled = true;
-            CustomerNumberMethod = Customers.CustomerNumberMethod.Disabled;
-            CustomerNumberVisibility = Customers.CustomerNumberVisibility.None;
+			CustomerLoginType = CustomerLoginType.UsernameOrEmail;
+            CustomerNumberMethod = CustomerNumberMethod.Disabled;
+            CustomerNumberVisibility = CustomerNumberVisibility.None;
 			DefaultPasswordFormat = PasswordFormat.Hashed;
 			HashedPasswordFormat = "SHA1";
 			PasswordMinLength = 6;
 			UserRegistrationType = UserRegistrationType.Standard;
-			AvatarMaximumSizeBytes = 20000;
-			DefaultAvatarEnabled = true;
+			AvatarMaximumSizeBytes = 512000;
 			CustomerNameFormat = CustomerNameFormat.ShowFirstName;
 			CustomerNameFormatMaxLength = 64;
 			GenderEnabled = true;
@@ -24,13 +22,14 @@ namespace SmartStore.Core.Domain.Customers
 			NewsletterEnabled = true;
 			OnlineCustomerMinutes = 20;
 			StoreLastVisitedPage = true;
-            DisplayPrivacyAgreementOnContactUs = false;
+			FirstNameRequired = false;
+			LastNameRequired = false;
 		}
-		
-		/// <summary>
-        /// Gets or sets a value indicating whether usernames are used instead of emails
+
+        /// <summary>
+        /// Gets or sets a value indicating the customer login type
         /// </summary>
-        public bool UsernamesEnabled { get; set; }
+        public CustomerLoginType CustomerLoginType { get; set; }
 
         /// <summary>
         /// Gets or sets the customer number method
@@ -81,11 +80,6 @@ namespace SmartStore.Core.Domain.Customers
         /// Gets or sets a maximum avatar size (in bytes)
         /// </summary>
         public int AvatarMaximumSizeBytes { get; set; }
-
-        /// <summary>
-        /// Gets or sets a value indicating whether to display default user avatar.
-        /// </summary>
-        public bool DefaultAvatarEnabled { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether customers location is shown
@@ -151,11 +145,6 @@ namespace SmartStore.Core.Domain.Customers
         /// Gets or sets a value indicating we should store last visited page URL for each customer
         /// </summary>
         public bool StoreLastVisitedPage { get; set; }
-
-        /// <summary>
-        /// Gets or sets a value indicating whether to display a checkbox to the customer where he can agree to privacy terms
-        /// </summary>
-        public bool DisplayPrivacyAgreementOnContactUs { get; set; }
         
         #region Form fields
 
@@ -169,10 +158,20 @@ namespace SmartStore.Core.Domain.Customers
         /// </summary>
         public bool TitleEnabled { get; set; }
 
-        /// <summary>
-        /// Gets or sets a value indicating whether 'Date of Birth' is enabled
-        /// </summary>
-        public bool DateOfBirthEnabled { get; set; }
+		/// <summary>
+		/// Gets or sets a value indicating whether 'FirstName' is required
+		/// </summary>
+		public bool FirstNameRequired { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether 'LastName' is required
+		/// </summary>
+		public bool LastNameRequired { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether 'Date of Birth' is enabled
+		/// </summary>
+		public bool DateOfBirthEnabled { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether 'Company' is enabled
@@ -255,9 +254,6 @@ namespace SmartStore.Core.Domain.Customers
         public bool FaxRequired { get; set; }
 
         #endregion
-
-        public string PrefillLoginUsername { get; set; }
-        public string PrefillLoginPwd { get; set; }
 
 		/// <summary>
 		/// Identifier of a customer role that new registered customers will be assigned to

@@ -16,10 +16,15 @@
       <LocaleResource Name="AddNewRecordTitle">
         <Value>Add new record</Value>
       </LocaleResource>
-      <LocaleResource Name="SettingsTitle">
-        <Value>Settings</Value>
+	  <LocaleResource Name="AddNewRecord.Success">
+		<Value>The new record was successfully added.</Value>
+	  </LocaleResource>
+      <LocaleResource Name="TabTitleSettings">
+        <Value>Options</Value>
       </LocaleResource>
-
+      <LocaleResource Name="TabTitleGrid">
+		<Value>Shipping records</Value>
+	  </LocaleResource>
       <LocaleResource Name="Fields.Country">
         <Value>Country</Value>
       </LocaleResource>
@@ -79,6 +84,12 @@
       </LocaleResource>
       <LocaleResource Name="Fields.LimitMethodsToCreated.Hint">
         <Value>If you check this option, then your customers will be limited to shipping options configured here. Otherwise, they'll be able to choose any existing shipping options even if they're not configured here (zero shipping fee in this case).</Value>
+      </LocaleResource>
+      <LocaleResource Name="Fields.CalculateTotalIncludingTax">
+        <Value>Calculate order total incl. tax</Value>
+      </LocaleResource>
+      <LocaleResource Name="Fields.CalculateTotalIncludingTax.Hint">
+        <Value>Specifies whether to calculate the order total including or excluding taxes.</Value>
       </LocaleResource>
 
       <LocaleResource Name="Fields.BaseCharge">

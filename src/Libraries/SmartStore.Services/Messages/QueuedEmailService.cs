@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Mail;
+using System.Threading.Tasks;
 using System.Web;
 using SmartStore.Core;
 using SmartStore.Core.Data;
@@ -93,9 +94,6 @@ namespace SmartStore.Services.Messages
 					}
 				}
 			}
-
-			// event notification
-			_services.EventPublisher.EntityInserted(queuedEmail);
         }
 
         public virtual void UpdateQueuedEmail(QueuedEmail queuedEmail)
@@ -103,9 +101,6 @@ namespace SmartStore.Services.Messages
 			Guard.NotNull(queuedEmail, nameof(queuedEmail));
 
 			_queuedEmailRepository.Update(queuedEmail);
-
-            // event notification
-			_services.EventPublisher.EntityUpdated(queuedEmail);
         }
 
         public virtual void DeleteQueuedEmail(QueuedEmail queuedEmail)
@@ -113,9 +108,6 @@ namespace SmartStore.Services.Messages
 			Guard.NotNull(queuedEmail, nameof(queuedEmail));
 
             _queuedEmailRepository.Delete(queuedEmail);
-
-            // event notification
-			_services.EventPublisher.EntityDeleted(queuedEmail);
         }
 
 		public virtual int DeleteAllQueuedEmails()
@@ -144,17 +136,9 @@ namespace SmartStore.Services.Messages
 
             var queuedEmails = query.ToList();
 
-            // sort by passed identifiers
-            var sortedQueuedEmails = new List<QueuedEmail>();
-
-            foreach (int id in queuedEmailIds)
-            {
-                var queuedEmail = queuedEmails.Find(x => x.Id == id);
-                if (queuedEmail != null)
-                    sortedQueuedEmails.Add(queuedEmail);
-            }
-            return sortedQueuedEmails;
-        }
+			// sort by passed identifier sequence
+			return queuedEmails.OrderBySequence(queuedEmailIds).ToList();
+		}
 
         public virtual IPagedList<QueuedEmail> SearchEmails(SearchEmailsQuery query)
         {
@@ -201,7 +185,7 @@ namespace SmartStore.Services.Messages
             return queuedEmails;
         }
 
-		public virtual bool SendEmail(QueuedEmail queuedEmail)
+		public virtual async Task<bool> SendEmailAsync(QueuedEmail queuedEmail)
 		{
 			var result = false;
 
@@ -210,7 +194,7 @@ namespace SmartStore.Services.Messages
 				var smtpContext = new SmtpContext(queuedEmail.EmailAccount);
 				var msg = ConvertEmail(queuedEmail);
 
-				_emailSender.SendEmail(smtpContext, msg);
+				await _emailSender.SendEmailAsync(smtpContext, msg);
 
 				queuedEmail.SentOnUtc = DateTime.UtcNow;
 				result = true;
@@ -242,14 +226,14 @@ namespace SmartStore.Services.Messages
 			// 'internal' for testing purposes
 
 			var msg = new EmailMessage(
-				new EmailAddress(qe.To, qe.ToName),
-				qe.Subject,
+				new EmailAddress(qe.To),
+				qe.Subject.Replace("\r\n", string.Empty),
 				qe.Body,
-				new EmailAddress(qe.From, qe.FromName));
+				new EmailAddress(qe.From));
 
 			if (qe.ReplyTo.HasValue())
 			{
-				msg.ReplyTo.Add(new EmailAddress(qe.ReplyTo, qe.ReplyToName));
+				msg.ReplyTo.Add(new EmailAddress(qe.ReplyTo));
 			}
 
 			AddEmailAddresses(qe.CC, msg.Cc);
@@ -329,8 +313,6 @@ namespace SmartStore.Services.Messages
 			}
 
 			_queuedEmailAttachmentRepository.Delete(attachment);
-
-			_services.EventPublisher.EntityDeleted(attachment);
 		}
 
 		public virtual byte[] LoadQueuedEmailAttachmentBinary(QueuedEmailAttachment attachment)

@@ -15,13 +15,10 @@ namespace SmartStore.Web.Framework.Filters
 
 		public virtual void OnResultExecuting(ResultExecutingContext filterContext)
 		{
-			if (filterContext.IsChildAction)
+			if (Notifier == null || Notifier.Entries.Count == 0)
 				return;
 
-			if (Notifier == null || !Notifier.Entries.Any())
-				return;
-
-			if (filterContext.HttpContext.Request.IsAjaxRequest())
+			if (!filterContext.IsChildAction && filterContext.HttpContext.Request.IsAjaxRequest())
 			{
 				HandleAjaxRequest(Notifier.Entries.FirstOrDefault(), filterContext.HttpContext.Response);
 				return;
@@ -29,6 +26,8 @@ namespace SmartStore.Web.Framework.Filters
 
 			Persist(filterContext.Controller.ViewData, Notifier.Entries.Where(x => x.Durable == false));
 			Persist(filterContext.Controller.TempData, Notifier.Entries.Where(x => x.Durable == true));
+
+			Notifier.Entries.Clear();
 		}
 
 		public virtual void OnResultExecuted(ResultExecutedContext filterContext)
@@ -40,14 +39,15 @@ namespace SmartStore.Web.Framework.Filters
 			if (!source.Any())
 				return;
 
-			var existing = (bag[NotificationsKey] ?? new List<NotifyEntry>()) as List<NotifyEntry>;
+			var existing = (bag[NotificationsKey] ?? new HashSet<NotifyEntry>()) as HashSet<NotifyEntry>;
 			
-			source.Each(x => {
-				if (x.Message.Text.HasValue() && !existing.Contains(x))
+			source.Each(x => 
+			{
+				if (x.Message.Text.HasValue())
 					existing.Add(x);
 			});
 
-			bag[NotificationsKey] = existing;
+			bag[NotificationsKey] = TrimSet(existing);
 		}
 
 		private void HandleAjaxRequest(NotifyEntry entry, HttpResponseBase response)
@@ -57,6 +57,16 @@ namespace SmartStore.Web.Framework.Filters
 
 			response.AddHeader("X-Message-Type", entry.Type.ToString().ToLower());
 			response.AddHeader("X-Message", entry.Message.Text);
+		}
+
+		private HashSet<NotifyEntry> TrimSet(HashSet<NotifyEntry> entries)
+		{
+			if (entries.Count <= 20)
+			{
+				return entries;
+			}
+
+			return new HashSet<NotifyEntry>(entries.Skip(entries.Count - 20));
 		}
 	}
 

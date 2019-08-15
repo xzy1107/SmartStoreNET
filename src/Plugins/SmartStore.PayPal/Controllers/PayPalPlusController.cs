@@ -4,15 +4,17 @@ using System.Linq;
 using System.Text;
 using System.Web;
 using System.Web.Mvc;
+using Newtonsoft.Json;
+using SmartStore.ComponentModel;
 using SmartStore.Core.Domain.Customers;
 using SmartStore.Core.Domain.Orders;
 using SmartStore.Core.Domain.Stores;
 using SmartStore.Core.Html;
 using SmartStore.Core.Plugins;
 using SmartStore.PayPal.Models;
+using SmartStore.PayPal.Providers;
 using SmartStore.PayPal.Services;
 using SmartStore.PayPal.Settings;
-using SmartStore.PayPal.Validators;
 using SmartStore.Services.Catalog;
 using SmartStore.Services.Common;
 using SmartStore.Services.Customers;
@@ -20,14 +22,16 @@ using SmartStore.Services.Directory;
 using SmartStore.Services.Localization;
 using SmartStore.Services.Payments;
 using SmartStore.Services.Tax;
+using SmartStore.Web.Framework;
 using SmartStore.Web.Framework.Controllers;
 using SmartStore.Web.Framework.Plugins;
 using SmartStore.Web.Framework.Security;
 using SmartStore.Web.Framework.Settings;
+using SmartStore.Web.Framework.Theming;
 
 namespace SmartStore.PayPal.Controllers
 {
-	public class PayPalPlusController : PayPalRestApiControllerBase<PayPalPlusPaymentSettings>
+    public class PayPalPlusController : PayPalRestApiControllerBase<PayPalPlusPaymentSettings>
 	{
 		private readonly HttpContextBase _httpContext;
 		private readonly PluginMediator _pluginMediator;
@@ -45,9 +49,7 @@ namespace SmartStore.PayPal.Controllers
 			IPaymentService paymentService,
 			ITaxService taxService,
 			ICurrencyService currencyService,
-			IPriceFormatter priceFormatter) : base(
-				PayPalPlusProvider.SystemName,
-				payPalService)
+			IPriceFormatter priceFormatter) : base(payPalService)
 		{
 			_httpContext = httpContext;
 			_pluginMediator = pluginMediator;
@@ -58,22 +60,7 @@ namespace SmartStore.PayPal.Controllers
 			_priceFormatter = priceFormatter;
 		}
 
-		private string GetPaymentMethodName(Provider<IPaymentMethod> provider)
-		{
-			if (provider != null)
-			{
-				var name = _pluginMediator.GetLocalizedFriendlyName(provider.Metadata);
-
-				if (name.IsEmpty())
-					name = provider.Metadata.FriendlyName;
-
-				if (name.IsEmpty())
-					name = provider.Metadata.SystemName;
-
-				return name;
-			}
-			return "";
-		}
+        protected override string ProviderSystemName => PayPalPlusProvider.SystemName;
 
 		private string GetPaymentFee(Provider<IPaymentMethod> provider, List<OrganizedShoppingCartItem> cart)
 		{
@@ -94,25 +81,42 @@ namespace SmartStore.PayPal.Controllers
 			Store store)
 		{
 			var model = new PayPalPlusCheckoutModel.ThirdPartyPaymentMethod();
-			model.MethodName = GetPaymentMethodName(provider);
-			model.RedirectUrl = Url.Action("CheckoutReturn", "PayPalPlus", new { area = Plugin.SystemName, systemName = provider.Metadata.SystemName }, store.SslEnabled ? "https" : "http");
 
 			try
 			{
-				if (settings.DisplayPaymentMethodDescription)
+                model.RedirectUrl = Url.Action("CheckoutReturn", "PayPalPlus", new { area = Plugin.SystemName, systemName = provider.Metadata.SystemName }, store.SslEnabled ? "https" : "http");
+
+                if (provider.Metadata.SystemName == PayPalInstalmentsProvider.SystemName)
+                {
+                    // "The methodName contains up to 25 characters. All additional characters are truncated."
+                    // https://developer.paypal.com/docs/paypal-plus/germany/how-to/integrate-third-party-payments/
+                    model.MethodName = T("Plugins.Payments.PayPalInstalments.ShortMethodName");
+                }
+                else
+                {
+                    model.MethodName = _pluginMediator.GetLocalizedFriendlyName(provider.Metadata).NullEmpty()
+                        ?? provider.Metadata.FriendlyName.NullEmpty()
+                        ?? provider.Metadata.SystemName;
+                }
+
+                model.MethodName = model.MethodName.EmptyNull();
+
+                if (settings.DisplayPaymentMethodDescription)
 				{
-					// not the short description, the full description is intended for frontend
+					// Not the short description, the full description is intended for frontend.
 					var paymentMethod = _paymentService.GetPaymentMethodBySystemName(provider.Metadata.SystemName);
 					if (paymentMethod != null)
 					{
-						var description = paymentMethod.GetLocalized(x => x.FullDescription);
+						string description = paymentMethod.GetLocalized(x => x.FullDescription);
 						if (description.HasValue())
 						{
 							description = HtmlUtils.ConvertHtmlToPlainText(description);
 							description = HtmlUtils.StripTags(HttpUtility.HtmlDecode(description));
 
-							if (description.HasValue())
-								model.Description = description.EncodeJsString();
+                            if (description.HasValue())
+                            {
+                                model.Description = description.EncodeJsString();
+                            }
 						}
 					}
 				}
@@ -123,17 +127,28 @@ namespace SmartStore.PayPal.Controllers
 			{
 				if (settings.DisplayPaymentMethodLogo && provider.Metadata.PluginDescriptor != null && store.SslEnabled)
 				{
-					var brandImageUrl = _pluginMediator.GetBrandImageUrl(provider.Metadata);
-					if (brandImageUrl.HasValue())
-					{
-						if (brandImageUrl.StartsWith("~"))
-							brandImageUrl = brandImageUrl.Substring(1);
+                    // Special case PayPal instalments.
+                    if (provider.Metadata.SystemName == PayPalInstalmentsProvider.SystemName && model.ImageUrl.IsEmpty())
+                    {
+                        var uri = new UriBuilder(Uri.UriSchemeHttps, Request.Url.Host, -1, "Plugins/SmartStore.PayPal/Content/instalments-sm.png");
+                        model.ImageUrl = uri.ToString();
+                    }
+                    else
+                    {
+                        var brandImageUrl = _pluginMediator.GetBrandImageUrl(provider.Metadata);
+                        if (brandImageUrl.HasValue())
+                        {
+                            if (brandImageUrl.StartsWith("~"))
+                            {
+                                brandImageUrl = brandImageUrl.Substring(1);
+                            }
 
-						var uri = new UriBuilder(Uri.UriSchemeHttps, Request.Url.Host, -1, brandImageUrl);
-						model.ImageUrl = uri.ToString();
-					}
-				}
-			}
+                            var uri = new UriBuilder(Uri.UriSchemeHttps, Request.Url.Host, -1, brandImageUrl);
+                            model.ImageUrl = uri.ToString();
+                        }
+                    }
+                }
+            }
 			catch { }
 
 			return model;
@@ -153,84 +168,48 @@ namespace SmartStore.PayPal.Controllers
 			return paymentInfo;
 		}
 
-		[AdminAuthorize, ChildActionOnly]
-		public ActionResult Configure()
+		[LoadSetting, AdminAuthorize, ChildActionOnly, AdminThemed]
+		public ActionResult Configure(PayPalPlusPaymentSettings settings, int storeScope)
 		{
-			var storeScope = this.GetActiveStoreScopeConfiguration(Services.StoreService, Services.WorkContext);
-			var settings = Services.Settings.LoadSetting<PayPalPlusPaymentSettings>(storeScope);
+			// It's better to also offer inactive methods here but filter them out in frontend.
+			var paymentMethods = _paymentService.LoadAllPaymentMethods(storeScope);
 
-			var model = new PayPalPlusConfigurationModel
-			{
-				ConfigGroups = T("Plugins.SmartStore.PayPal.ConfigGroups").Text.SplitSafe(";")
-			};
+            var model = new PayPalPlusConfigurationModel();
+            MiniMapper.Map(settings, model);
+            PrepareConfigurationModel(model, storeScope);
 
-			model.AvailableSecurityProtocols = PayPal.Services.PayPalService.GetSecurityProtocols()
-				.Select(x => new SelectListItem { Value = ((int)x.Key).ToString(), Text = x.Value })
-				.ToList();
+            model.AvailableThirdPartyPaymentMethods = paymentMethods
+                .Where(x =>
+                {
+                    if (x.Value.RequiresInteraction)
+                    {
+                        return false;
+                    }
+                    if (x.Metadata.PluginDescriptor.SystemName == Plugin.SystemName)
+                    {
+                        return x.Metadata.SystemName == PayPalInstalmentsProvider.SystemName;
+                    }
 
-			// it's better to also offer inactive methods here but filter them out in frontend
-			var methods = _paymentService.LoadAllPaymentMethods(storeScope);
+                    return x.Metadata.PluginDescriptor.SystemName == "SmartStore.OfflinePayment" || x.Value.PaymentMethodType == PaymentMethodType.Redirection;
+                })
+                .ToSelectListItems(_pluginMediator, model.ThirdPartyPaymentMethods.ToArray());
 
-			model.AvailableThirdPartyPaymentMethods = methods
-				.Where(x => 
-					x.Metadata.PluginDescriptor.SystemName != Plugin.SystemName &&
-					!x.Value.RequiresInteraction &&
-					(x.Metadata.PluginDescriptor.SystemName == "SmartStore.OfflinePayment" || x.Value.PaymentMethodType == PaymentMethodType.Redirection))
-				.Select(x => new SelectListItem { Value = x.Metadata.SystemName, Text = GetPaymentMethodName(x) })
-				.ToList();
-
-
-			model.Copy(settings, true);
-
-			var storeDependingSettingHelper = new StoreDependingSettingHelper(ViewData);
-			storeDependingSettingHelper.GetOverrideKeys(settings, model, storeScope, Services.Settings);
-
-			return View(model);
+            return View(model);
 		}
 
-		[HttpPost, AdminAuthorize, ChildActionOnly]
+		[HttpPost, AdminAuthorize, ChildActionOnly, AdminThemed]
 		public ActionResult Configure(PayPalPlusConfigurationModel model, FormCollection form)
 		{
-			var storeDependingSettingHelper = new StoreDependingSettingHelper(ViewData);
-			var storeScope = this.GetActiveStoreScopeConfiguration(Services.StoreService, Services.WorkContext);
-			var settings = Services.Settings.LoadSetting<PayPalPlusPaymentSettings>(storeScope);
-			var oldClientId = settings.ClientId;
-			var oldSecret = settings.Secret;
-			var oldProfileId = settings.ExperienceProfileId;
+            if (!SaveConfigurationModel(model, form))
+            {
+                var storeScope = this.GetActiveStoreScopeConfiguration(Services.StoreService, Services.WorkContext);
+                var settings = Services.Settings.LoadSetting<PayPalPlusPaymentSettings>(storeScope);
 
-			var validator = new PayPalPlusConfigValidator(Services.Localization, x =>
-			{
-				return storeScope == 0 || storeDependingSettingHelper.IsOverrideChecked(settings, x, form);
-			});
+                return Configure(settings, storeScope);
+            }
 
-			validator.Validate(model, ModelState);
-
-			if (!ModelState.IsValid)
-				return Configure();
-
-			ModelState.Clear();
-
-			model.Copy(settings, false);
-
-			// credentials changed: reset profile and webhook id to avoid errors
-			if (!oldClientId.IsCaseInsensitiveEqual(settings.ClientId) || !oldSecret.IsCaseInsensitiveEqual(settings.Secret))
-			{
-				if (oldProfileId.IsCaseInsensitiveEqual(settings.ExperienceProfileId))
-					settings.ExperienceProfileId = null;
-
-				settings.WebhookId = null;
-			}
-
-			using (Services.Settings.BeginScope())
-			{
-				storeDependingSettingHelper.UpdateSettings(settings, form, storeScope, Services.Settings);
-				Services.Settings.SaveSetting(settings, x => x.UseSandbox, 0, false);
-			}
-
-			NotifySuccess(T("Admin.Common.DataSuccessfullySaved"));
-
-			return Configure();
-		}
+            return RedirectToConfiguration(PayPalPlusProvider.SystemName, false);
+        }
 
 		public ActionResult PaymentInfo()
 		{
@@ -250,7 +229,8 @@ namespace SmartStore.PayPal.Controllers
 			var pppProvider = _paymentService.LoadPaymentMethodBySystemName(PayPalPlusProvider.SystemName, false, store.Id);
 
 			var methods = _paymentService.LoadActivePaymentMethods(customer, cart, store.Id, null, false);
-			var session = _httpContext.GetPayPalSessionData();
+			var session = _httpContext.GetPayPalState(PayPalPlusProvider.SystemName);
+            var redirectToConfirm = false;
 
 			var model = new PayPalPlusCheckoutModel();
 			model.ThirdPartyPaymentMethods = new List<PayPalPlusCheckoutModel.ThirdPartyPaymentMethod>();
@@ -262,7 +242,7 @@ namespace SmartStore.PayPal.Controllers
 
 			if (pppMethod != null)
 			{
-				model.FullDescription = pppMethod.GetLocalized(x => x.FullDescription, language.Id);
+				model.FullDescription = pppMethod.GetLocalized(x => x.FullDescription, language);
 			}
 
 			if (customer.BillingAddress != null && customer.BillingAddress.Country != null)
@@ -289,7 +269,7 @@ namespace SmartStore.PayPal.Controllers
 
 			model.ThirdPartyFees = sb.ToString();
 
-			// we must create a new paypal payment each time the payment wall is rendered because otherwise patch payment can fail
+			// We must create a new paypal payment each time the payment wall is rendered because otherwise patch payment can fail
 			// with "Item amount must add up to specified amount subtotal (or total if amount details not specified)".
 			session.PaymentId = null;
 			session.ApprovalUrl = null;
@@ -297,12 +277,19 @@ namespace SmartStore.PayPal.Controllers
 			var result = PayPalService.EnsureAccessToken(session, settings);
 			if (result.Success)
 			{
-				var protocol = (store.SslEnabled ? "https" : "http");
+				var protocol = store.SslEnabled ? "https" : "http";
 				var returnUrl = Url.Action("CheckoutReturn", "PayPalPlus", new { area = Plugin.SystemName }, protocol);
 				var cancelUrl = Url.Action("CheckoutCancel", "PayPalPlus", new { area = Plugin.SystemName }, protocol);
+                
+                var paymentData = PayPalService.CreatePaymentData(settings, session, cart, returnUrl, cancelUrl);
 
-				result = PayPalService.CreatePayment(settings, session, cart, PayPalPlusProvider.SystemName, returnUrl, cancelUrl);
-				if (result.Success && result.Json != null)
+                result = PayPalService.CreatePayment(settings, session, paymentData);
+				if (result == null)
+				{
+                    // No payment required.
+                    redirectToConfirm = true;
+				}
+				else if (result.Success && result.Json != null)
 				{
 					foreach (var link in result.Json.links)
 					{
@@ -326,28 +313,65 @@ namespace SmartStore.PayPal.Controllers
 
 			model.ApprovalUrl = session.ApprovalUrl;
 
+            // There have been cases where the token was lost for unexplained reasons, so it is additionally stored in the database.
+            var sessionData = session.AccessToken.HasValue() && session.PaymentId.HasValue()
+                ? JsonConvert.SerializeObject(session)
+                : null;
+            _genericAttributeService.SaveAttribute(customer, PayPalPlusProvider.SystemName + ".SessionData", sessionData, store.Id);
+
+            if (redirectToConfirm)
+            {
+                return RedirectToAction("Confirm", "Checkout", new { area = "" });
+            }
+
+            if (session.SessionExpired)
+			{
+				// Customer has been redirected because the session expired.
+				session.SessionExpired = false;
+				NotifyInfo(T("Plugins.SmartStore.PayPal.SessionExpired"));
+			}
+
 			return View(model);
 		}
 
 		[HttpPost]
 		public ActionResult PatchShipping()
 		{
-			var store = Services.StoreContext.CurrentStore;
-			var customer = Services.WorkContext.CurrentCustomer;
+            var store = Services.StoreContext.CurrentStore;
+            var customer = Services.WorkContext.CurrentCustomer;
+            var session = _httpContext.GetPayPalState(PayPalPlusProvider.SystemName, customer, store.Id, _genericAttributeService);
+
+			if (session.AccessToken.IsEmpty() || session.PaymentId.IsEmpty())
+			{
+				// Session expired. Reload payment wall and create new payment (we need the payment id).				
+				session.SessionExpired = true;
+
+				return new JsonResult { Data = new { success = false, error = string.Empty, reload = true } };
+			}
+
 			var settings = Services.Settings.LoadSetting<PayPalPlusPaymentSettings>(store.Id);
 			var cart = customer.GetCartItems(ShoppingCartType.ShoppingCart, store.Id);
-			var session = HttpContext.GetPayPalSessionData();
 
-			var apiResult = PayPalService.PatchShipping(settings, session, cart, PayPalPlusProvider.SystemName);
+			var result = PayPalService.PatchShipping(settings, session, cart);
+			var errorMessage = result.ErrorMessage;
 
-			return new JsonResult { Data = new { success = apiResult.Success, error = apiResult.ErrorMessage } };
+			if (!result.Success && result.IsValidationError)
+			{
+				errorMessage = string.Concat(T("Plugins.SmartStore.PayPal.PayPalValidationFailure"), "\r\n", errorMessage);
+			}
+
+			return new JsonResult { Data = new { success = result.Success, error = errorMessage, reload = false } };
 		}
 
 		public ActionResult CheckoutCompleted()
 		{
-			var instruct = _httpContext.Session[PayPalPlusProvider.CheckoutCompletedKey] as string;
+            var store = Services.StoreContext.CurrentStore;
+            var customer = Services.WorkContext.CurrentCustomer;
 
-			if (instruct.HasValue())
+            _genericAttributeService.SaveAttribute(customer, PayPalPlusProvider.SystemName + ".SessionData", (string)null, store.Id);
+
+            var instruct = _httpContext.Session["PayPalCheckoutCompleted"] as string;
+            if (instruct.HasValue())
 			{
 				return Content(instruct);
 			}
@@ -355,16 +379,14 @@ namespace SmartStore.PayPal.Controllers
 			return new EmptyResult();
 		}
 
-		[ValidateInput(false)]
 		public ActionResult CheckoutReturn(string systemName, string paymentId, string PayerID)
 		{
-			// Request.QueryString:
-			// paymentId: PAY-0TC88803RP094490KK4KM6AI, token: EC-5P379249AL999154U, PayerID: 5L9K773HHJLPN
+            // Request.QueryString:
+            // paymentId: PAY-0TC88803RP094490KK4KM6AI, token (not the access token): EC-5P379249AL999154U, PayerID: 5L9K773HHJLPN
 
-			var customer = Services.WorkContext.CurrentCustomer;
-			var store = Services.StoreContext.CurrentStore;
-			var settings = Services.Settings.LoadSetting<PayPalPlusPaymentSettings>(store.Id);
-			var session = _httpContext.GetPayPalSessionData();
+            var store = Services.StoreContext.CurrentStore;
+            var customer = Services.WorkContext.CurrentCustomer;
+			var session = _httpContext.GetPayPalState(PayPalPlusProvider.SystemName);
 
 			if (systemName.IsEmpty())
 				systemName = PayPalPlusProvider.SystemName;
@@ -388,7 +410,6 @@ namespace SmartStore.PayPal.Controllers
 			return RedirectToAction("Confirm", "Checkout", new { area = "" });
 		}
 
-		[ValidateInput(false)]
 		public ActionResult CheckoutCancel()
 		{
 			// Request.QueryString:
